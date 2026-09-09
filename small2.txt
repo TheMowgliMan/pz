@@ -1,0 +1,6 @@
+Small file:
+
+
+A little file for better REPT tests that are easier to analyze.
+
+REPT needs threeeeee characters at least to repeat.

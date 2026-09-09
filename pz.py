@@ -137,6 +137,7 @@ class PzCompressor:
         self.symbols = {}
         for line in tree:
             line = line.rstrip()
+
             if line.isdigit():
                 self.tree.add(int(line))
             else:
@@ -166,18 +167,23 @@ class PzCompressor:
         c = Counter(data)
 
         firstcount = None
+        symbols_not_added = True
+
         for char,count in c.most_common():
             if firstcount == None:
                 firstcount = count
 
             # print(char, count)
 
-            if count < (firstcount / 100): # Yayy magic number
+            if count < (firstcount / 100) and symbols_not_added: # Yayy magic number
                 self.__add_all_symbols()
-                firstcount = -1 # Disables this branch for the rest of the loop
+                symbols_not_added = False
 
             self.tree.add(char)
             self.fastfind[char] = self.tree.in_order_find(char)
+
+        if symbols_not_added:
+            self.__add_all_symbols()
 
         self.__add_symbol("[EOA]")
 
@@ -195,17 +201,57 @@ class PzCompressor:
         return (len(t), [PzBinUtil.kaboom_char(byte) for byte in t.encode("utf-8")])
 
     def compress(self, data):
-        if self.tree == None:
-            self.generate_tree(data)
+        self.generate_tree(data)
 
         data = self.__binarize(data)
 
         r = []
+        last_char = ""
+        last_char_count = 1
         for c in data:
             if not c in self.fastfind:
                 self.tree.add(c)
                 self.fastfind[c] = self.tree.in_order_find(c)
-            r.append(self.fastfind[c])
+            if last_char != c or last_char_count == 255:
+                if last_char != "":
+                    if last_char_count == 1:
+                        r.append(self.fastfind[last_char])
+                        last_char = c
+                    else:
+                        if last_char_count > 2:
+                            r.append(self.get_sym("REPT"))
+
+                            integer = PzBinUtil.kaboom_char(last_char_count)
+                            integer.append(0)
+                            r.append(integer)
+
+                            r.append(self.fastfind[last_char])
+
+                            last_char = c
+                            last_char_count = 1
+                        else:
+                            for i in range(last_char_count):
+                                r.append(self.fastfind[last_char])
+
+                            last_char = c
+                            last_char_count = 1
+                else:
+                    last_char = c
+                    last_char_count = 1
+            elif last_char == c and last_char_count < 255:
+                last_char_count += 1
+            else:
+                print("Wrong clause reached")
+
+        if last_char_count == 1:
+            r.append(self.fastfind[last_char])
+            last_char = c
+        else:
+            r.append(self.get_sym("REPT"))
+            integer = PzBinUtil.kaboom_char(last_char_count)
+            integer.append(0)
+            r.append(integer)
+            r.append(self.fastfind[last_char])
 
         tree = self.__generate_tree_for_insertion()
 
@@ -223,25 +269,54 @@ class PzCompressor:
         return PzBinUtil.to_binary(r)
 
     def decompress(self, data:bytes):
-        tree_size = data[0] + data[1] * 256 + data[2] * 65536 + data[3] * 16777216
+        tree_size = data[3] + data[2] * 256 + data[1] * 65536 + data[0] * 16777216
 
         tree_string = bytearray()
         for i in range(tree_size):
             tree_string.append(data[4 + i])
         tree_string = tree_string.decode("utf-8")
+
         tree_list = tree_string.split("\n")
-
-        print(tree_list)
-
         self.__import(tree_list)
 
         data = bytearray(data) # NOTE: maybe unnecesary?
-        data = data[tree_size:]
+        data = data[(tree_size + 4):]
         data = PzBinUtil.from_binary(data)
 
         r = bytearray()
+
         is_meta = False
-        for cc in data:
+        pz_protocol_ver = -1 # Unset
+
+        reptstage = 0
+        reptcount = 0
+        reptcc = []
+
+        # print(data)
+        # print(self.get_sym("REPT"))
+
+        for i,cc in enumerate(data):
+            if reptstage > 0:
+                if reptstage == 1:
+                    reptcc.extend(cc)
+
+                    if len(reptcc) == 5:
+                        reptstage += 1
+                        reptcount = reptcc[0] * 64 + reptcc[1] * 16 + reptcc[2] * 4 + reptcc[3]
+                        # print("[REPT] count: ", str(reptcount))
+                elif reptstage == 2:
+                    char = self.tree.get(cc)
+                    # print("[REPT] char: ", char)
+
+                    for i in range(reptcount):
+                        r.append(char)
+
+                    # print("[REPT dropping...]")
+                    reptstage = 0
+                    reptcount = 0
+                    reptcc = []
+                continue
+
             if cc == self.symbols["[EOA]"]:
                 break
 
@@ -249,10 +324,22 @@ class PzCompressor:
                 is_meta = True
             elif cc == self.get_sym("END META"):
                 is_meta = False
+                if pz_protocol_ver == -1:
+                    raise RuntimeError("Decompressing files with no stated protocol is deprecated and may be removed at any time!")
 
+            # In-compression symbols:
+            if cc == self.get_sym("REPT"):
+                # print("[REPT] entered")
+                reptstage = 1
+
+            # print(cc)
             if not self.tree.get(cc) in self.symbols:
                 if not is_meta:
                     r.append(self.tree.get(cc))
+
+            if is_meta:
+                if cc == self.get_sym("PZ PROTOCOL 0"):
+                    pz_protocol_ver = 0
 
         return bytes(r)
 
@@ -341,14 +428,23 @@ class PzBinUtil:
 if __name__ == "__main__":
     print("Creating compressor...")
     c = PzCompressor()
-    with open("en.txt", "rb") as data:
+    with open("libDuskVerb.so", "rb") as data:
         print("Compressing data...")
         d = c.compress(data.read())
-        with open("en.txt.pz", "wb") as pz:
+        with open("libDuskVerb.so.pz", "wb") as pz:
             print("Writing back...")
             # f = PzCompressor()
             # d = f.compress(PzBinUtil.to_binary(d))
             # f.export_tree("test_tree_2.pztree")
             pz.write(d)
         print("Exporting tree...")
+
+    print("Loading compressed file...")
+    m = PzCompressor()
+    with open("libDuskVerb.so.pz", "rb") as data:
+        print("Decompressing file...")
+        f = m.decompress(data.read())
+        print("Writing back...")
+        with open("libDuskVerb2.so", "wb") as pz:
+            pz.write(f)
     print("Done!")
