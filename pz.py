@@ -140,6 +140,7 @@ class PzCompressor:
 
     def __add_all_symbols(self):
         self.__add_symbol("[REPT]")
+        self.__add_symbol("[BACKREF]")
         self.__add_symbol("[PZ META]")
         self.__add_symbol("[END META]")
         self.__add_symbol("[PZ PROTOCOL 0]")
@@ -434,32 +435,24 @@ class PzBinUtil:
 
     def from_binary(b_data:bytes):
         r = []
-        byte_buf = deque()
+        byte_buf = []
         for b in b_data:
-            t_buf = [(b & 0b11000000) >> 6, (b & 0b00110000) >> 4, (b & 0b00001100) >> 2, (b & 0b00000011)]
-            zero_found = True if 0 in t_buf else False
-            byte_buf.extend(t_buf)
-            # byte_buf.append((b & 0b11000000) >> 6)
-            # byte_buf.append((b & 0b00110000) >> 4)
-            # byte_buf.append((b & 0b00001100) >> 2)
-            # byte_buf.append((b & 0b00000011))
+            byte_buf.append((b & 0b11000000) >> 6)
+            byte_buf.append((b & 0b00110000) >> 4)
+            byte_buf.append((b & 0b00001100) >> 2)
+            byte_buf.append((b & 0b00000011))
 
-            if zero_found:
-                while 0 in byte_buf:
-                    char_buf = []
-                    while not 0 in char_buf:
-                        char_buf.append(byte_buf.popleft())
+        char_buf = []
+        for i in byte_buf:
+            char_buf.append(i)
 
-                    r.append(char_buf)
-
-        if byte_buf:
-            byte_buf.append(0)
-            while 0 in byte_buf:
-                char_buf = []
-                while not 0 in char_buf:
-                    char_buf.append(byte_buf.popleft())
-
+            if i == 0 and len(char_buf) != 0:
                 r.append(char_buf)
+                char_buf = []
+
+        if len(char_buf) != 0:
+            char_buf.append(0)
+            r.append(char_buf)
 
         return r
 
@@ -475,7 +468,6 @@ if __name__ == "__main__":
             # d = f.compress(PzBinUtil.to_binary(d))
             # f.export_tree("test_tree_2.pztree")
             pz.write(d)
-        print("Exporting tree...")
 
     print("Loading compressed file...")
     m = PzCompressor()
