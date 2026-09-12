@@ -1,5 +1,9 @@
 from collections import deque, Counter
+from time import time
 import copy
+
+def timestamp():
+    return time() * 1000
 
 class PzBinTI:
     def __init__(self, data, left=None, right=None, center=None):
@@ -25,6 +29,8 @@ class PzBinT:
     def __init__(self):
         self.head = None
         self.data_series = [] # Used for quickly writing out the tree as a list. This relies on the fact that add() always adds nodes in a certain order
+
+        self.fastfind = {}
 
     def add(self, data):
         item = PzBinTI(data)
@@ -58,6 +64,11 @@ class PzBinT:
                     t.center = PzBinTI(data)
                     return
             self.head = t_head
+
+        iof = self.in_order_find(data)
+        len_iof = len(iof)
+        hashed = sum([(iof[i] << (2 * (len_iof - i - 1))) for i in range(len_iof - 1, -1, -1)])
+        self.fastfind[hashed] = data
 
     def export(self):
         return self.data_series
@@ -100,9 +111,19 @@ class PzBinT:
         return PzBinT.__iof(self.head, match, chain)
 
     def get(self, item:list):
+        len_item = len(item)
+        hashed = sum([(item[i] << (2 * (len_item - i - 1))) for i in range(len_item - 1, -1, -1)])
+        not_in = False
+        if hashed in self.fastfind:
+            return self.fastfind[hashed]
+        else:
+            not_in = True
+
         link = self.head
         for i in item:
             if i == 0:
+                if not_in:
+                    self.fastfind[hashed] = link.data
                 return link.data
             else:
                 link = link.get(i)
@@ -201,13 +222,17 @@ class PzCompressor:
         return (len(t), [PzBinUtil.kaboom_char(byte) for byte in t.encode("utf-8")])
 
     def compress(self, data):
+        print("Generating tree...")
         self.generate_tree(data)
 
         data = self.__binarize(data)
 
+        print("Compressing data...")
+
         r = []
         last_char = ""
         last_char_count = 1
+
         for c in data:
             if not c in self.fastfind:
                 self.tree.add(c)
@@ -269,19 +294,31 @@ class PzCompressor:
         return PzBinUtil.to_binary(r)
 
     def decompress(self, data:bytes):
+        t = timestamp()
+        print("Retrieving tree@", timestamp() - t)
         tree_size = data[3] + data[2] * 256 + data[1] * 65536 + data[0] * 16777216
 
-        tree_string = bytearray()
-        for i in range(tree_size):
-            tree_string.append(data[4 + i])
+        tree_string = bytes(data[4 : tree_size + 4])
         tree_string = tree_string.decode("utf-8")
 
+        print("Formatting tree@", timestamp() - t)
+
         tree_list = tree_string.split("\n")
+
+        # tree_bin = bytes(data[4:tree_size])
+        # tree_list = []
+        # for i in tree_bin:
+        #     pass
+
+        print("Importing tree@", timestamp() - t)
         self.__import(tree_list)
 
-        data = bytearray(data) # NOTE: maybe unnecesary?
+        print("Arranging data@", timestamp() - t)
+
         data = data[(tree_size + 4):]
         data = PzBinUtil.from_binary(data)
+
+        print("Decompressing@", timestamp() - t)
 
         r = bytearray()
 
@@ -291,9 +328,6 @@ class PzCompressor:
         reptstage = 0
         reptcount = 0
         reptcc = []
-
-        # print(data)
-        # print(self.get_sym("REPT"))
 
         for i,cc in enumerate(data):
             if reptstage > 0:
@@ -402,17 +436,21 @@ class PzBinUtil:
         r = []
         byte_buf = deque()
         for b in b_data:
-            byte_buf.append((b & 0b11000000) >> 6)
-            byte_buf.append((b & 0b00110000) >> 4)
-            byte_buf.append((b & 0b00001100) >> 2)
-            byte_buf.append((b & 0b00000011))
+            t_buf = [(b & 0b11000000) >> 6, (b & 0b00110000) >> 4, (b & 0b00001100) >> 2, (b & 0b00000011)]
+            zero_found = True if 0 in t_buf else False
+            byte_buf.extend(t_buf)
+            # byte_buf.append((b & 0b11000000) >> 6)
+            # byte_buf.append((b & 0b00110000) >> 4)
+            # byte_buf.append((b & 0b00001100) >> 2)
+            # byte_buf.append((b & 0b00000011))
 
-            while 0 in byte_buf:
-                char_buf = []
-                while not 0 in char_buf:
-                    char_buf.append(byte_buf.popleft())
+            if zero_found:
+                while 0 in byte_buf:
+                    char_buf = []
+                    while not 0 in char_buf:
+                        char_buf.append(byte_buf.popleft())
 
-                r.append(char_buf)
+                    r.append(char_buf)
 
         if byte_buf:
             byte_buf.append(0)
@@ -428,10 +466,10 @@ class PzBinUtil:
 if __name__ == "__main__":
     print("Creating compressor...")
     c = PzCompressor()
-    with open("libDuskVerb.so", "rb") as data:
+    with open("en.txt", "rb") as data:
         print("Compressing data...")
         d = c.compress(data.read())
-        with open("libDuskVerb.so.pz", "wb") as pz:
+        with open("en.txt.pz", "wb") as pz:
             print("Writing back...")
             # f = PzCompressor()
             # d = f.compress(PzBinUtil.to_binary(d))
@@ -441,10 +479,10 @@ if __name__ == "__main__":
 
     print("Loading compressed file...")
     m = PzCompressor()
-    with open("libDuskVerb.so.pz", "rb") as data:
+    with open("en.txt.pz", "rb") as data:
         print("Decompressing file...")
         f = m.decompress(data.read())
         print("Writing back...")
-        with open("libDuskVerb2.so", "wb") as pz:
+        with open("en2.txt", "wb") as pz:
             pz.write(f)
     print("Done!")
