@@ -1,5 +1,8 @@
 from collections import deque, Counter
 from time import time
+
+from findbetween import findbetween
+
 import copy
 
 def timestamp():
@@ -234,40 +237,69 @@ class PzCompressor:
         last_char = ""
         last_char_count = 1
 
-        for c in data:
-            if not c in self.fastfind:
-                self.tree.add(c)
-                self.fastfind[c] = self.tree.in_order_find(c)
-            if last_char != c or last_char_count == 255:
-                if last_char != "":
-                    if last_char_count == 1:
-                        r.append(self.fastfind[last_char])
-                        last_char = c
-                    else:
-                        if last_char_count > 2:
-                            r.append(self.get_sym("REPT"))
+        ref_q = deque(maxlen=2048)
+        ex_q = deque()
+        ex_q_sz = 0
 
-                            integer = PzBinUtil.kaboom_char(last_char_count)
-                            integer.append(0)
-                            r.append(integer)
+        for bc in data:
+            ex_q.append(bc)
+            ex_q_sz += 1
 
-                            r.append(self.fastfind[last_char])
+            if ex_q_sz > 255:
+                found = findbetween(ref_q, ex_q)
+                if found[0] >= 0 and (len(ref_q) - found[0]) > 255:
+                    r.append(self.get_sym("BACKREF"))
 
-                            last_char = c
-                            last_char_count = 1
-                        else:
-                            for i in range(last_char_count):
-                                r.append(self.fastfind[last_char])
+                    integer = PzBinUtil.kaboom_short(65535 - found[0])
+                    integer.append(0)
+                    r.append(integer)
 
-                            last_char = c
-                            last_char_count = 1
+                    integer = PzBinUtil.kaboom_char(found[1])
+                    integer.append(0)
+                    r.append(integer)
+
+                    for i in range(found[1]):
+                        ex_q.popleft()
                 else:
-                    last_char = c
-                    last_char_count = 1
-            elif last_char == c and last_char_count < 255:
-                last_char_count += 1
-            else:
-                print("Wrong clause reached")
+                    c = ex_q.popleft()
+                    ex_q_sz -= 1
+
+                    if not c in self.fastfind:
+                        self.tree.add(c)
+                        self.fastfind[c] = self.tree.in_order_find(c)
+
+                    if last_char != c or last_char_count == 255:
+                        if last_char != "":
+                            if last_char_count == 1:
+                                r.append(self.fastfind[last_char])
+                                last_char = c
+                            else:
+                                if last_char_count > 2:
+                                    r.append(self.get_sym("REPT"))
+
+                                    integer = PzBinUtil.kaboom_char(last_char_count)
+                                    integer.append(0)
+                                    r.append(integer)
+
+                                    r.append(self.fastfind[last_char])
+
+                                    last_char = c
+                                    last_char_count = 1
+                                else:
+                                    for i in range(last_char_count):
+                                        r.append(self.fastfind[last_char])
+
+                                    last_char = c
+                                    last_char_count = 1
+                        else:
+                            last_char = c
+                            last_char_count = 1
+                    elif last_char == c and last_char_count < 255:
+                        last_char_count += 1
+                    else:
+                        print("Wrong clause reached")
+
+            ref_q.append(bc)
 
         if last_char_count == 1:
             r.append(self.fastfind[last_char])
@@ -278,6 +310,10 @@ class PzCompressor:
             integer.append(0)
             r.append(integer)
             r.append(self.fastfind[last_char])
+
+        if len(ex_q) > 0:
+            for c in ex_q:
+                r.append(self.fastfind[c])
 
         tree = self.__generate_tree_for_insertion()
 
@@ -391,10 +427,19 @@ class PzBinUtil:
         else:
             raise ValueError("Must be an integer value between 0 and 255 inclusive.")
 
+    def kaboom_short(b):
+        bytes_buf = []
+        if not (65535 >= b >= 0):
+            raise ValueError("Must be an integer value between 0 and 2^32-1 inclusive.")
+        else:
+            for i in range(8):
+                bytes_buf.append((b & (0b0011 << ((7 - i) * 2))) >> ((7 - i) * 2))
+            return bytes_buf
+
     def kaboom_dword(b):
         bytes_buf = []
         if not (4294967295 >= b >= 0):
-            ValueError("Must be an integer value between 0 and 2^32-1 inclusive.")
+            raise ValueError("Must be an integer value between 0 and 2^32-1 inclusive.")
         else:
             for i in range(16):
                 bytes_buf.append((b & (0b0011 << ((15 - i) * 2))) >> ((15 - i) * 2))
@@ -469,12 +514,12 @@ if __name__ == "__main__":
             # f.export_tree("test_tree_2.pztree")
             pz.write(d)
 
-    print("Loading compressed file...")
-    m = PzCompressor()
-    with open("en.txt.pz", "rb") as data:
-        print("Decompressing file...")
-        f = m.decompress(data.read())
-        print("Writing back...")
-        with open("en2.txt", "wb") as pz:
-            pz.write(f)
+    # print("Loading compressed file...")
+    # m = PzCompressor()
+    # with open("en.txt.pz", "rb") as data:
+    #     print("Decompressing file...")
+    #     f = m.decompress(data.read())
+    #     print("Writing back...")
+    #     with open("en2.txt", "wb") as pz:
+    #         pz.write(f)
     print("Done!")
