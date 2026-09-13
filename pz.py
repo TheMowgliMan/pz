@@ -186,7 +186,7 @@ class PzCompressor:
 
         data = bytearray(data)
 
-        data.extend(bytes(range(256)))
+        # data.extend(bytes(range(256)))
         data = self.__binarize(bytes(data))
 
         c = Counter(data)
@@ -241,25 +241,30 @@ class PzCompressor:
         ex_q = deque()
         ex_q_sz = 0
 
+        # TODO: Rewrite this monster
+
         for bc in data:
             ex_q.append(bc)
             ex_q_sz += 1
 
             if ex_q_sz > 255:
-                found = findbetween(ref_q, ex_q)
-                if found[0] >= 0 and (len(ref_q) - found[0]) > 255:
-                    r.append(self.get_sym("BACKREF"))
+                if len(ref_q) > 256:
+                    found = findbetween(ref_q[256 :], [ex_q], min_size=3)
+                    if found[0] >= 0:
+                        r.append(self.get_sym("BACKREF"))
 
-                    integer = PzBinUtil.kaboom_short(65535 - found[0])
-                    integer.append(0)
-                    r.append(integer)
+                        integer = PzBinUtil.kaboom_short(65535 - found[0])
+                        integer.append(0)
+                        r.append(integer)
 
-                    integer = PzBinUtil.kaboom_char(found[1])
-                    integer.append(0)
-                    r.append(integer)
+                        integer = PzBinUtil.kaboom_char(found[1])
+                        integer.append(0)
+                        r.append(integer)
 
-                    for i in range(found[1]):
-                        ex_q.popleft()
+                        for i in range(found[1]):
+                            ex_q.popleft()
+
+                        print("BACKREF added!")
                 else:
                     c = ex_q.popleft()
                     ex_q_sz -= 1
@@ -314,6 +319,8 @@ class PzCompressor:
         if len(ex_q) > 0:
             for c in ex_q:
                 r.append(self.fastfind[c])
+
+        # End offending section
 
         tree = self.__generate_tree_for_insertion()
 
@@ -504,10 +511,10 @@ class PzBinUtil:
 if __name__ == "__main__":
     print("Creating compressor...")
     c = PzCompressor()
-    with open("en.txt", "rb") as data:
+    with open("small.txt", "rb") as data:
         print("Compressing data...")
         d = c.compress(data.read())
-        with open("en.txt.pz", "wb") as pz:
+        with open("small.txt.pz", "wb") as pz:
             print("Writing back...")
             # f = PzCompressor()
             # d = f.compress(PzBinUtil.to_binary(d))
