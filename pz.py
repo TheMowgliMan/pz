@@ -243,13 +243,17 @@ class PzCompressor:
 
         # TODO: Rewrite this monster
 
+        iterator = 0
+
         for bc in data:
             ex_q.append(bc)
             ex_q_sz += 1
 
+            iterator += 1
+
             if ex_q_sz > 255:
-                if len(ref_q) > 256:
-                    found = findbetween(ref_q[256 :], [ex_q], min_size=3)
+                if len(ref_q) > 256 and (iterator % 16) == 0:
+                    found = findbetween(list(ref_q)[256:], ex_q, min_size=3)
                     if found[0] >= 0:
                         r.append(self.get_sym("BACKREF"))
 
@@ -372,6 +376,8 @@ class PzCompressor:
         reptstage = 0
         reptcount = 0
         reptcc = []
+
+        # TODO: Add BACKREF to this thing
 
         for i,cc in enumerate(data):
             if reptstage > 0:
