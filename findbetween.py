@@ -9,14 +9,13 @@ def findbetween(search_from, search_source, min_size=5):
     search_from = list(search_from)
 
     for b in range(len(search_source) + 1, 0, -1):
+        if b < min_size:
+            break
+
         block = search_source[0 : b]
 
         idx = find_index(block, search_from)
 
         if idx >= 0:
             return (idx, len(block))
-
-        if b < min_size:
-            break
-
     return (-1, 0)

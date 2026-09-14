@@ -237,7 +237,8 @@ class PzCompressor:
         last_char = ""
         last_char_count = 1
 
-        ref_q = deque(maxlen=2048)
+        ref_q_len = 512
+        ref_q = deque(maxlen=ref_q_len)
 
         ex_q = deque()
         ex_q_sz = 0
@@ -252,9 +253,8 @@ class PzCompressor:
                 pass
 
             if len(ex_q) == 257:
-                if not cc == None:
+                if cc != None:
                     ref_q.append(cc)
-
                 cc = ex_q.popleft()
 
                 if ex_q[0] == cc: # [REPT]
@@ -273,16 +273,20 @@ class PzCompressor:
                     r.append(integer)
 
                     r.append(self.fastfind[cc])
+                    ref_q.append(cc)
+                    cc = None
 
-                    for i in range(l - 1):
+                    for j in range(l - 1):
                         ref_q.append(ex_q.popleft())
-                elif (i % 16) == 0 and len(ref_q) > 256: # Attempt [BACKREF]
-                    found = findbetween(list(ref_q)[256:], ex_q, min_size = 3)
+                elif cc != None: # Attempt [BACKREF]
+                    ref_q.append(cc)
+                    found = findbetween(list(ref_q), ex_q, min_size = 3)
                     if found[0] >= 0:
-                        r.append(self.fastfind[cc])
+                        print(bytes(list(ref_q)[found[0] : found[0] + found[1]]).decode("cp437"))
+                        # r.append(self.fastfind[cc])
                         r.append(self.get_sym("BACKREF"))
 
-                        integer = PzBinUtil.kaboom_short(found[0])
+                        integer = PzBinUtil.kaboom_short(ref_q_len - found[0])
                         integer.append(0)
                         r.append(integer)
 
@@ -290,11 +294,12 @@ class PzCompressor:
                         integer.append(0)
                         r.append(integer)
 
-                        ref_q.append(cc)
                         cc = None
 
-                        for i in range(found[1]):
+                        for j in range(found[1]):
                             ref_q.append(ex_q.popleft())
+                    else:
+                        ref_q.pop() # Put cc back where it goes
                 else:
                     r.append(self.fastfind[cc])
 
@@ -362,7 +367,7 @@ class PzCompressor:
         #                     last_char_count = 1
         #             elif last_char == c and last_char_count < 255:
         #                 last_char_count += 1
-        #             else:
+        #             else:backref_data
         #                 print("Wrong clause reached")
         #
         #     ref_q.append(bc)
@@ -434,16 +439,21 @@ class PzCompressor:
         reptcount = 0
         reptcc = []
 
-        backref_data = deque(maxlen=65536)
+        backref_data = deque([64 for i in range(65536)])
         bref_stage = 0
         brefcc = []
 
         bref_len = 0
         bref_count = 0
 
-        # TODO: Add BACKREF to this thing
+        bref_char_passed = 0
+
+        # Rewrite this!!
 
         for i,cc in enumerate(data):
+            while len(backref_data) > 65536:
+                backref_data.popleft()
+
             if reptstage > 0:
                 if reptstage == 1:
                     reptcc.extend(cc)
@@ -454,9 +464,10 @@ class PzCompressor:
                 elif reptstage == 2:
                     char = self.tree.get(cc)
 
-                    for i in range(reptcount):
+                    for j in range(reptcount):
                         r.append(char)
-                        backref_data.append(cc)
+                        backref_data.append(char)
+                        bref_char_passed += 1
 
                     reptstage = 0
                     reptcount = 0
@@ -477,17 +488,23 @@ class PzCompressor:
                     if len(brefcc) == 5:
                         bref_len = brefcc[0] * 64 + brefcc[1] * 16 + brefcc[2] * 4 + brefcc[3]
 
-                        for i in range(bref_count, bref_count + bref_len):
-                            print(i, len(backref_data), bref_len)
-                            p = self.tree.get(backref_data[i])
-                            if not p in self.symbols:
-                                r.append(p)
-                            backref_data.append(backref_data[i])
+                        t = bytearray()
+                        for j in range(65536 - bref_count, 65536 - bref_count + bref_len):
+                            print(j, len(backref_data), bref_len, bref_count)
+                            p = backref_data[j]
+                            r.append(p)
+                            t.append(p)
+
+                        print(t.decode("cp437"))
+
+                        backref_data.extend(t)
 
                         brefcc = []
                         bref_len = 0
                         bref_count = 0
                         bref_stage = 0
+
+                        print("[BACKREF] exited")
 
                 continue
 
@@ -505,20 +522,23 @@ class PzCompressor:
             if cc == self.get_sym("REPT"):
                 # print("[REPT] entered")
                 reptstage = 1
+            elif cc == self.get_sym("BACKREF"):
+                print("[BACKREF] entered @", bref_char_passed)
+                bref_char_passed = 0
+                bref_stage = 1
 
             # print(cc)
             if not self.tree.get(cc) in self.symbols:
                 if not is_meta:
                     r.append(self.tree.get(cc))
+                    backref_data.append(self.tree.get(cc))
+                    bref_char_passed += 1
 
             if is_meta:
                 if cc == self.get_sym("PZ PROTOCOL 0"):
                     pz_protocol_ver = 0
 
-            if not is_meta and cc != self.get_sym("BACKREF"):
-                backref_data.append(cc)
-            elif not is_meta: # Since the above evaluated to false this means that cc == [BACKREF]
-                bref_stage = 1
+        # End offending section
 
         return bytes(r)
 
