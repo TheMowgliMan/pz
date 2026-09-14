@@ -238,26 +238,51 @@ class PzCompressor:
         last_char_count = 1
 
         ref_q = deque(maxlen=2048)
+
         ex_q = deque()
         ex_q_sz = 0
 
-        # TODO: Rewrite this monster
+        cc = None
 
-        iterator = 0
+        for i in range(len(data) + 256):
+            try:
+                bc = data[i]
+                ex_q.append(bc)
+            except IndexError:
+                pass
 
-        for bc in data:
-            ex_q.append(bc)
-            ex_q_sz += 1
+            if len(ex_q) == 257:
+                if not cc == None:
+                    ref_q.append(cc)
 
-            iterator += 1
+                cc = ex_q.popleft()
 
-            if ex_q_sz > 255:
-                if len(ref_q) > 256 and (iterator % 16) == 0:
-                    found = findbetween(list(ref_q)[256:], ex_q, min_size=3)
+                if ex_q[0] == cc: # [REPT]
+                    l = 1
+
+                    for c in ex_q:
+                        if c != cc:
+                            break
+                        else:
+                            l += 1
+
+                    r.append(self.get_sym("REPT"))
+
+                    integer = PzBinUtil.kaboom_char(l)
+                    integer.append(0)
+                    r.append(integer)
+
+                    r.append(self.fastfind[cc])
+
+                    for i in range(l - 1):
+                        ref_q.append(ex_q.popleft())
+                elif (i % 16) == 0 and len(ref_q) > 256: # Attempt [BACKREF]
+                    found = findbetween(list(ref_q)[256:], ex_q, min_size = 3)
                     if found[0] >= 0:
+                        r.append(self.fastfind[cc])
                         r.append(self.get_sym("BACKREF"))
 
-                        integer = PzBinUtil.kaboom_short(65535 - found[0])
+                        integer = PzBinUtil.kaboom_short(found[0])
                         integer.append(0)
                         r.append(integer)
 
@@ -265,64 +290,96 @@ class PzCompressor:
                         integer.append(0)
                         r.append(integer)
 
+                        ref_q.append(cc)
+                        cc = None
+
                         for i in range(found[1]):
-                            ex_q.popleft()
-
-                        print("BACKREF added!")
+                            ref_q.append(ex_q.popleft())
                 else:
-                    c = ex_q.popleft()
-                    ex_q_sz -= 1
+                    r.append(self.fastfind[cc])
 
-                    if not c in self.fastfind:
-                        self.tree.add(c)
-                        self.fastfind[c] = self.tree.in_order_find(c)
+        # TODO: Rewrite this monster
 
-                    if last_char != c or last_char_count == 255:
-                        if last_char != "":
-                            if last_char_count == 1:
-                                r.append(self.fastfind[last_char])
-                                last_char = c
-                            else:
-                                if last_char_count > 2:
-                                    r.append(self.get_sym("REPT"))
-
-                                    integer = PzBinUtil.kaboom_char(last_char_count)
-                                    integer.append(0)
-                                    r.append(integer)
-
-                                    r.append(self.fastfind[last_char])
-
-                                    last_char = c
-                                    last_char_count = 1
-                                else:
-                                    for i in range(last_char_count):
-                                        r.append(self.fastfind[last_char])
-
-                                    last_char = c
-                                    last_char_count = 1
-                        else:
-                            last_char = c
-                            last_char_count = 1
-                    elif last_char == c and last_char_count < 255:
-                        last_char_count += 1
-                    else:
-                        print("Wrong clause reached")
-
-            ref_q.append(bc)
-
-        if last_char_count == 1:
-            r.append(self.fastfind[last_char])
-            last_char = c
-        else:
-            r.append(self.get_sym("REPT"))
-            integer = PzBinUtil.kaboom_char(last_char_count)
-            integer.append(0)
-            r.append(integer)
-            r.append(self.fastfind[last_char])
-
-        if len(ex_q) > 0:
-            for c in ex_q:
-                r.append(self.fastfind[c])
+        # iterator = 0
+        #
+        # for bc in data:
+        #     ex_q.append(bc)
+        #     ex_q_sz += 1
+        #
+        #     iterator += 1
+        #
+        #     if ex_q_sz > 255:
+        #         if len(ref_q) > 256 and (iterator % 16) == 0:
+        #             found = findbetween(list(ref_q)[256:], ex_q, min_size=3)
+        #             if found[0] >= 0:
+        #                 r.append(self.get_sym("BACKREF"))
+        #
+        #                 integer = PzBinUtil.kaboom_short(65535 - found[0])
+        #                 integer.append(0)
+        #                 r.append(integer)
+        #
+        #                 integer = PzBinUtil.kaboom_char(found[1])
+        #                 integer.append(0)
+        #                 r.append(integer)
+        #
+        #                 for i in range(found[1]):
+        #                     ex_q.popleft()
+        #
+        #                 print("BACKREF added!")
+        #         else:
+        #             c = ex_q.popleft()
+        #             ex_q_sz -= 1
+        #
+        #             if not c in self.fastfind:
+        #                 self.tree.add(c)
+        #                 self.fastfind[c] = self.tree.in_order_find(c)
+        #
+        #             if last_char != c or last_char_count == 255:
+        #                 if last_char != "":
+        #                     if last_char_count == 1:
+        #                         r.append(self.fastfind[last_char])
+        #                         last_char = c
+        #                     else:
+        #                         if last_char_count > 2:
+        #                             r.append(self.get_sym("REPT"))
+        #
+        #                             integer = PzBinUtil.kaboom_char(last_char_count)
+        #                             integer.append(0)
+        #                             r.append(integer)
+        #
+        #                             r.append(self.fastfind[last_char])
+        #
+        #                             last_char = c
+        #                             last_char_count = 1
+        #                         else:
+        #                             for i in range(last_char_count):
+        #                                 r.append(self.fastfind[last_char])
+        #
+        #                             last_char = c
+        #                             last_char_count = 1
+        #                 else:
+        #                     last_char = c
+        #                     last_char_count = 1
+        #             elif last_char == c and last_char_count < 255:
+        #                 last_char_count += 1
+        #             else:
+        #                 print("Wrong clause reached")
+        #
+        #     ref_q.append(bc)
+        #
+        # if last_char_count == 1:
+        #     r.append(self.fastfind[last_char])
+        #     last_char = c
+        # else:
+        #     r.append(self.get_sym("REPT"))
+        #     integer = PzBinUtil.kaboom_char(last_char_count)
+        #     integer.append(0)
+        #     r.append(integer)
+        #     r.append(self.fastfind[last_char])
+        #
+        # if len(ex_q) > 0:
+        #     for c in ex_q:
+        #         r.append(self.fastfind[c])
 
         # End offending section
 
@@ -420,7 +477,7 @@ class PzCompressor:
                     if len(brefcc) == 5:
                         bref_len = brefcc[0] * 64 + brefcc[1] * 16 + brefcc[2] * 4 + brefcc[3]
 
-                        for i in range(65535 - bref_count, 65535 - bref_count + bref_len):
+                        for i in range(bref_count, bref_count + bref_len):
                             print(i, len(backref_data), bref_len)
                             p = self.tree.get(backref_data[i])
                             if not p in self.symbols:
