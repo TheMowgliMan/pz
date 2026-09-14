@@ -377,6 +377,13 @@ class PzCompressor:
         reptcount = 0
         reptcc = []
 
+        backref_data = deque(maxlen=65536)
+        bref_stage = 0
+        brefcc = []
+
+        bref_len = 0
+        bref_count = 0
+
         # TODO: Add BACKREF to this thing
 
         for i,cc in enumerate(data):
@@ -387,18 +394,44 @@ class PzCompressor:
                     if len(reptcc) == 5:
                         reptstage += 1
                         reptcount = reptcc[0] * 64 + reptcc[1] * 16 + reptcc[2] * 4 + reptcc[3]
-                        # print("[REPT] count: ", str(reptcount))
                 elif reptstage == 2:
                     char = self.tree.get(cc)
-                    # print("[REPT] char: ", char)
 
                     for i in range(reptcount):
                         r.append(char)
+                        backref_data.append(cc)
 
-                    # print("[REPT dropping...]")
                     reptstage = 0
                     reptcount = 0
                     reptcc = []
+                continue
+
+            if bref_stage > 0:
+                if bref_stage == 1:
+                    brefcc.extend(cc)
+
+                    if len(brefcc) == 9:
+                        bref_stage += 1
+                        bref_count = brefcc[0] * 16384 + brefcc[1] * 4096 + brefcc[2] * 1024 + brefcc[3] * 256 + brefcc[4] * 64 + brefcc[5] * 16 + brefcc[6] * 4 + brefcc[7] # One-liner math lolz
+                        brefcc = []
+                elif bref_stage == 2:
+                    brefcc.extend(cc)
+
+                    if len(brefcc) == 5:
+                        bref_len = brefcc[0] * 64 + brefcc[1] * 16 + brefcc[2] * 4 + brefcc[3]
+
+                        for i in range(65535 - bref_count, 65535 - bref_count + bref_len):
+                            print(i, len(backref_data), bref_len)
+                            p = self.tree.get(backref_data[i])
+                            if not p in self.symbols:
+                                r.append(p)
+                            backref_data.append(backref_data[i])
+
+                        brefcc = []
+                        bref_len = 0
+                        bref_count = 0
+                        bref_stage = 0
+
                 continue
 
             if cc == self.symbols["[EOA]"]:
@@ -424,6 +457,11 @@ class PzCompressor:
             if is_meta:
                 if cc == self.get_sym("PZ PROTOCOL 0"):
                     pz_protocol_ver = 0
+
+            if not is_meta and cc != self.get_sym("BACKREF"):
+                backref_data.append(cc)
+            elif not is_meta: # Since the above evaluated to false this means that cc == [BACKREF]
+                bref_stage = 1
 
         return bytes(r)
 
@@ -527,12 +565,12 @@ if __name__ == "__main__":
             # f.export_tree("test_tree_2.pztree")
             pz.write(d)
 
-    # print("Loading compressed file...")
-    # m = PzCompressor()
-    # with open("en.txt.pz", "rb") as data:
-    #     print("Decompressing file...")
-    #     f = m.decompress(data.read())
-    #     print("Writing back...")
-    #     with open("en2.txt", "wb") as pz:
-    #         pz.write(f)
+    print("Loading compressed file...")
+    m = PzCompressor()
+    with open("small.txt.pz", "rb") as data:
+        print("Decompressing file...")
+        f = m.decompress(data.read())
+        print("Writing back...")
+        with open("small2.txt", "wb") as pz:
+            pz.write(f)
     print("Done!")
