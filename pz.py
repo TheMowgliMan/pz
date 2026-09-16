@@ -77,7 +77,7 @@ class PzBinT:
         return self.data_series
 
     def __iop(data):
-        print(data.data)
+        # print(data.data)
         if data.get(1):
             PzBinT.__iop(data.get(1))
         if data.get(2):
@@ -198,7 +198,7 @@ class PzCompressor:
             if firstcount == None:
                 firstcount = count
 
-            # print(char, count)
+            # # print(char, count)
 
             if count < (firstcount / 100) and symbols_not_added: # Yayy magic number
                 self.__add_all_symbols()
@@ -218,7 +218,7 @@ class PzCompressor:
         elif isinstance(data, bytes):
             return data
         else:
-            print(data, type(data))
+            # print(data, type(data))
             raise TypeError("Improper datatype")
 
     def __generate_tree_for_insertion(self):
@@ -226,64 +226,68 @@ class PzCompressor:
         return (len(t), [PzBinUtil.kaboom_char(byte) for byte in t.encode("utf-8")])
 
     def compress(self, data):
-        print("Generating tree...")
+        # print("Generating tree...")
         self.generate_tree(data)
 
         data = self.__binarize(data)
 
-        print("Compressing data...")
+        # print("Compressing data...")
 
         r = []
         last_char = ""
         last_char_count = 1
 
         ref_q_len = 512
-        ref_q = deque(maxlen=ref_q_len)
+        ref_q = deque([0 for i in range(ref_q_len)], maxlen=ref_q_len)
 
         ex_q = deque()
         ex_q_sz = 0
 
         cc = None
 
+        min_bref_size = 5
+
+        approaching_doneness = False
+
         for i in range(len(data) + 256):
             try:
                 bc = data[i]
                 ex_q.append(bc)
             except IndexError:
-                pass
+                approaching_doneness = True
 
-            if len(ex_q) == 257:
-                if cc != None:
-                    ref_q.append(cc)
-                cc = ex_q.popleft()
+            # print(len(ex_q))
 
-                if ex_q[0] == cc: # [REPT]
-                    l = 1
+            if len(ex_q) >= 256 or (approaching_doneness and len(ex_q) > 0):
+                # print("INSIDE")
+                if len(ex_q) > 1 and ex_q[0] == ex_q[1]: # [REPT]
+                    l = 0
 
                     for c in ex_q:
-                        if c != cc:
+                        if c != ex_q[0]:
                             break
                         else:
                             l += 1
 
-                    r.append(self.get_sym("REPT"))
+                    if (l * len(self.fastfind[ex_q[0]])) >= (len(self.get_sym("REPT")) + 5 + len(self.fastfind[ex_q[0]])):
+                        r.append(self.get_sym("REPT"))
 
-                    integer = PzBinUtil.kaboom_char(l)
-                    integer.append(0)
-                    r.append(integer)
+                        integer = PzBinUtil.kaboom_char(l)
+                        integer.append(0)
+                        r.append(integer)
 
-                    r.append(self.fastfind[cc])
-                    ref_q.append(cc)
-                    cc = None
+                        r.append(self.fastfind[ex_q[0]])
+                        ref_q.extend([ex_q[0]] * l)
 
-                    for j in range(l - 1):
+                        for v in range(l):
+                            ex_q.popleft()
+                    else:
+                        r.append(self.fastfind[ex_q[0]])
                         ref_q.append(ex_q.popleft())
-                elif cc != None: # Attempt [BACKREF]
-                    ref_q.append(cc)
-                    found = findbetween(list(ref_q), ex_q, min_size = 3)
-                    if found[0] >= 0:
-                        print(bytes(list(ref_q)[found[0] : found[0] + found[1]]).decode("cp437"))
-                        # r.append(self.fastfind[cc])
+                elif len(ref_q) != 0: # Attempt [BACKREF]
+                    found = findbetween(list(ref_q), ex_q, min_size = min_bref_size)
+                    if found[0] >= 0 and found[1] > (len(self.get_sym("BACKREF")) + 15):
+                        # print(bytes(list(ref_q)[found[0] : found[0] + found[1]]).decode("cp437"))
                         r.append(self.get_sym("BACKREF"))
 
                         integer = PzBinUtil.kaboom_short(ref_q_len - found[0])
@@ -294,99 +298,14 @@ class PzCompressor:
                         integer.append(0)
                         r.append(integer)
 
-                        cc = None
-
                         for j in range(found[1]):
                             ref_q.append(ex_q.popleft())
                     else:
-                        ref_q.pop() # Put cc back where it goes
+                        r.append(self.fastfind[ex_q[0]])
+                        ref_q.append(ex_q.popleft())
                 else:
-                    r.append(self.fastfind[cc])
-
-        # TODO: Rewrite this monster
-
-        # iterator = 0
-        #
-        # for bc in data:
-        #     ex_q.append(bc)
-        #     ex_q_sz += 1
-        #
-        #     iterator += 1
-        #
-        #     if ex_q_sz > 255:
-        #         if len(ref_q) > 256 and (iterator % 16) == 0:
-        #             found = findbetween(list(ref_q)[256:], ex_q, min_size=3)
-        #             if found[0] >= 0:
-        #                 r.append(self.get_sym("BACKREF"))
-        #
-        #                 integer = PzBinUtil.kaboom_short(65535 - found[0])
-        #                 integer.append(0)
-        #                 r.append(integer)
-        #
-        #                 integer = PzBinUtil.kaboom_char(found[1])
-        #                 integer.append(0)
-        #                 r.append(integer)
-        #
-        #                 for i in range(found[1]):
-        #                     ex_q.popleft()
-        #
-        #                 print("BACKREF added!")
-        #         else:
-        #             c = ex_q.popleft()
-        #             ex_q_sz -= 1
-        #
-        #             if not c in self.fastfind:
-        #                 self.tree.add(c)
-        #                 self.fastfind[c] = self.tree.in_order_find(c)
-        #
-        #             if last_char != c or last_char_count == 255:
-        #                 if last_char != "":
-        #                     if last_char_count == 1:
-        #                         r.append(self.fastfind[last_char])
-        #                         last_char = c
-        #                     else:
-        #                         if last_char_count > 2:
-        #                             r.append(self.get_sym("REPT"))
-        #
-        #                             integer = PzBinUtil.kaboom_char(last_char_count)
-        #                             integer.append(0)
-        #                             r.append(integer)
-        #
-        #                             r.append(self.fastfind[last_char])
-        #
-        #                             last_char = c
-        #                             last_char_count = 1
-        #                         else:
-        #                             for i in range(last_char_count):
-        #                                 r.append(self.fastfind[last_char])
-        #
-        #                             last_char = c
-        #                             last_char_count = 1
-        #                 else:
-        #                     last_char = c
-        #                     last_char_count = 1
-        #             elif last_char == c and last_char_count < 255:
-        #                 last_char_count += 1
-        #             else:backref_data
-        #                 print("Wrong clause reached")
-        #
-        #     ref_q.append(bc)
-        #
-        # if last_char_count == 1:
-        #     r.append(self.fastfind[last_char])
-        #     last_char = c
-        # else:
-        #     r.append(self.get_sym("REPT"))
-        #     integer = PzBinUtil.kaboom_char(last_char_count)
-        #     integer.append(0)
-        #     r.append(integer)
-        #     r.append(self.fastfind[last_char])
-        #
-        # if len(ex_q) > 0:
-        #     for c in ex_q:
-        #         r.append(self.fastfind[c])
-
-        # End offending section
+                    r.append(self.fastfind[ex_q[0]])
+                    ref_q.append(ex_q.popleft())
 
         tree = self.__generate_tree_for_insertion()
 
@@ -405,30 +324,23 @@ class PzCompressor:
 
     def decompress(self, data:bytes):
         t = timestamp()
-        print("Retrieving tree@", timestamp() - t)
+        # print("Retrieving tree@", timestamp() - t)
         tree_size = data[3] + data[2] * 256 + data[1] * 65536 + data[0] * 16777216
 
         tree_string = bytes(data[4 : tree_size + 4])
         tree_string = tree_string.decode("utf-8")
 
-        print("Formatting tree@", timestamp() - t)
-
         tree_list = tree_string.split("\n")
 
-        # tree_bin = bytes(data[4:tree_size])
-        # tree_list = []
-        # for i in tree_bin:
-        #     pass
-
-        print("Importing tree@", timestamp() - t)
+        # print("Importing tree@", timestamp() - t)
         self.__import(tree_list)
 
-        print("Arranging data@", timestamp() - t)
+        # print("Arranging data@", timestamp() - t)
 
         data = data[(tree_size + 4):]
         data = PzBinUtil.from_binary(data)
 
-        print("Decompressing@", timestamp() - t)
+        # print("Decompressing@", timestamp() - t)
 
         r = bytearray()
 
@@ -448,8 +360,6 @@ class PzCompressor:
 
         bref_char_passed = 0
 
-        # Rewrite this!!
-
         for i,cc in enumerate(data):
             while len(backref_data) > 65536:
                 backref_data.popleft()
@@ -465,7 +375,9 @@ class PzCompressor:
                     char = self.tree.get(cc)
 
                     for j in range(reptcount):
+                        # print(char)
                         r.append(char)
+                        backref_data.popleft()
                         backref_data.append(char)
                         bref_char_passed += 1
 
@@ -488,14 +400,21 @@ class PzCompressor:
                     if len(brefcc) == 5:
                         bref_len = brefcc[0] * 64 + brefcc[1] * 16 + brefcc[2] * 4 + brefcc[3]
 
+                        # print(bref_len, bref_count)
+
                         t = bytearray()
                         for j in range(65536 - bref_count, 65536 - bref_count + bref_len):
-                            print(j, len(backref_data), bref_len, bref_count)
+                            # print(j, len(backref_data), bref_len, bref_count)
                             p = backref_data[j]
                             r.append(p)
                             t.append(p)
 
-                        print(t.decode("cp437"))
+                        # print(t.decode("cp437"))
+
+                        # print(bytes(backref_data).decode("cp437"))
+
+                        for i in range(len(t)):
+                            backref_data.popleft()
 
                         backref_data.extend(t)
 
@@ -504,7 +423,7 @@ class PzCompressor:
                         bref_count = 0
                         bref_stage = 0
 
-                        print("[BACKREF] exited")
+                        # print("[BACKREF] exited")
 
                 continue
 
@@ -520,17 +439,18 @@ class PzCompressor:
 
             # In-compression symbols:
             if cc == self.get_sym("REPT"):
-                # print("[REPT] entered")
+                # print("[REPT]")
                 reptstage = 1
             elif cc == self.get_sym("BACKREF"):
-                print("[BACKREF] entered @", bref_char_passed)
+                # print("[BACKREF] entered @", bref_char_passed)
                 bref_char_passed = 0
                 bref_stage = 1
 
-            # print(cc)
             if not self.tree.get(cc) in self.symbols:
                 if not is_meta:
                     r.append(self.tree.get(cc))
+
+                    backref_data.popleft()
                     backref_data.append(self.tree.get(cc))
                     bref_char_passed += 1
 
@@ -632,10 +552,10 @@ class PzBinUtil:
 if __name__ == "__main__":
     print("Creating compressor...")
     c = PzCompressor()
-    with open("small.txt", "rb") as data:
+    with open("en.txt", "rb") as data:
         print("Compressing data...")
         d = c.compress(data.read())
-        with open("small.txt.pz", "wb") as pz:
+        with open("en.txt.pz", "wb") as pz:
             print("Writing back...")
             # f = PzCompressor()
             # d = f.compress(PzBinUtil.to_binary(d))
@@ -644,10 +564,10 @@ if __name__ == "__main__":
 
     print("Loading compressed file...")
     m = PzCompressor()
-    with open("small.txt.pz", "rb") as data:
+    with open("en.txt.pz", "rb") as data:
         print("Decompressing file...")
         f = m.decompress(data.read())
         print("Writing back...")
-        with open("small2.txt", "wb") as pz:
+        with open("en2.txt", "wb") as pz:
             pz.write(f)
     print("Done!")
