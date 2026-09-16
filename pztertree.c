@@ -79,7 +79,7 @@ void pztertree_Add(pzbint_t *tree, void *d, uint8_t dlen) {
         }
     }
 
-defer:
+defer: // The evil GOTO, although probably less evil than that for statement down there
     for (tq_t *cleanup = head; cleanup;) {
         tq_t *temp = cleanup->n;
         free(cleanup);
