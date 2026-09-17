@@ -116,3 +116,25 @@ pzbint_ret_t pztertree_Get(pzbint_t *head, uint8_t *key) {
 
     return ret;
 }
+
+static uint8_t *__iof(pzbinti_t *item, void *match, size_t matchlen, uint8_t *chain, uint32_t chaini, size_t chainlen) {
+    if (matchlen == item->vlen && memcmp(match, item->v, matchlen) == 0) {
+        chain[chaini] = 0;
+
+        uint8_t *ret = (uint8_t *)pzmalloc(sizeof(uint8_t *) * (chaini + 1));
+        memcpy(ret, chain, chaini + 1);
+
+        pzfree(chain);
+
+        return ret;
+    }
+
+    // TODO: Implement
+}
+
+uint8_t *pztertree_InOrderFind(pzbint_t *head, void *match, size_t matchlen) {
+    pzbinti_t *tree = head->h;
+    uint8_t *chain = (uint8_t *)pzmalloc(sizeof(uint8_t) * 256);
+
+    return __iof(tree, match, matchlen, chain, 0, 256);
+}

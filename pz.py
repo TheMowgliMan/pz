@@ -77,7 +77,7 @@ class PzBinT:
         return self.data_series
 
     def __iop(data):
-        # print(data.data)
+        print(data.data)
         if data.get(1):
             PzBinT.__iop(data.get(1))
         if data.get(2):

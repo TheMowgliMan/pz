@@ -9,4 +9,6 @@ typedef struct refarr {
     uint8_t *d;
 } ref_list_t;
 
+ref_list_t *pzbinutil_FromBinary(uint8_t *bin, uint64_t bin_len);
+
 #endif
