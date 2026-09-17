@@ -89,3 +89,30 @@ defer: // The evil GOTO, although probably less evil than that "for" statement d
 
     return;
 }
+
+pzbint_ret_t pztertree_Get(pzbint_t *head, uint8_t *key) {
+    pzbinti_t *tree = head->h;
+    for (uint8_t i = 0, v = key[i]; key[i] != 0; i++, v = key[i]) { // I love how diabolical C can be
+        if (!v) {
+            pzbint_ret_t ret;
+            ret.d = tree->v;
+            ret.dlen = tree->vlen;
+
+            return ret;
+        } else {
+            if (v == 1) {
+                tree = tree->n_l;
+            } else if (v == 2) {
+                tree = tree->n_r;
+            } else {
+                tree = tree->n_c;
+            }
+        }
+    }
+
+    pzbint_ret_t ret;
+    ret.d = NULL;
+    ret.dlen = 0;
+
+    return ret;
+}

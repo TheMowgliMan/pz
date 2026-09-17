@@ -23,7 +23,13 @@ typedef struct terqueue {
     tq_t *n;
 } tq_t;
 
+typedef struct pzbintret {
+    void *d;
+    uint8_t dlen;
+} pzbint_ret_t;
+
 pzbint_t *pztertree_New(void);
 void pztertree_Add(pzbint_t *tree, void *d, uint8_t dlen);
+pzbint_ret_t pztertree_Get(pzbint_t *head, uint8_t *key);
 
 #endif
