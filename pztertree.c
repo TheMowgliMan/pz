@@ -129,7 +129,22 @@ static uint8_t *__iof(pzbinti_t *item, void *match, size_t matchlen, uint8_t *ch
         return ret;
     }
 
-    // TODO: Implement
+    if (item->n_l) {
+        chain[chaini] = 1;
+        return __iof(item, match, matchlen, chain, chaini + 1, chainlen);
+    }
+
+    if (item->n_r) {
+        chain[chaini] = 2;
+        return __iof(item, match, matchlen, chain, chaini + 1, chainlen);
+    }
+
+    if (item->n_c) {
+        chain[chaini] = 3;
+        return __iof(item, match, matchlen, chain, chaini + 1, chainlen);
+    }
+
+    return NULL;
 }
 
 uint8_t *pztertree_InOrderFind(pzbint_t *head, void *match, size_t matchlen) {

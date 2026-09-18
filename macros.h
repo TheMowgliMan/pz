@@ -9,4 +9,8 @@
 #define pzmalloc(...) malloc(__VA_ARGS__)
 #define pzfree(...) free(__VA_ARGS__)
 
+#ifndef DECOMPRESS_OVER_ALLOCATE_SIZE
+#define DECOMPRESS_OVER_ALLOCATE_SIZE 256
+#endif
+
 #endif

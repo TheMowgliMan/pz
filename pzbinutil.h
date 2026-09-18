@@ -9,6 +9,13 @@ typedef struct refarr {
     uint8_t *d;
 } ref_list_t;
 
+typedef struct drefarr d_ref_list_t;
+typedef struct drefarr {
+    ref_list_t *n;
+    ref_list_t *p;
+    uint8_t *d;
+} d_ref_list_t;
+
 ref_list_t *pzbinutil_FromBinary(uint8_t *bin, uint64_t bin_len);
 
 #endif
