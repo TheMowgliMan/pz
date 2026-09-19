@@ -13,4 +13,8 @@
 #define DECOMPRESS_OVER_ALLOCATE_SIZE 256
 #endif
 
+#ifndef MAXIMUM_SYMBOL_COUNT
+#define MAXIMUM_SYMBOL_COUNT 16
+#endif
+
 #endif

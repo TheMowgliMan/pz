@@ -40,3 +40,28 @@ void pzbinutil_DRefList_DelLeft(d_ref_list_t *ptr) {
     ptr->p = NULL;
     free(old);
 }
+
+void pzbinutil_DRefList_Append(d_ref_list_t *ptr, uint8_t *d) {
+    d_ref_list_t *new = (d_ref_list_t *)pzmalloc(sizeof(d_ref_list_t));
+    new->d = d;
+    new->n = NULL;
+    new->p = ptr;
+
+    ptr->n = new;
+    ptr = new;
+}
+
+d_ref_list_t *pzbinutil_DRefList_ReelFromRight(d_ref_list_t *ptr, uint32_t reel) {
+    d_ref_list_t *tail = ptr;
+    for (uint32_t i = 0; i < reel; i++) {
+        tail = tail->p;
+
+        if (tail == NULL) {
+            debug("Error: reeled past the end of d_ref_list_t!");
+            goto end;
+        }
+    }
+
+end:
+    return tail;
+}

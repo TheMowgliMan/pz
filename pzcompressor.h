@@ -7,6 +7,7 @@ typedef struct pzcompressorinst pz_comp_inst_t;
 typedef struct pzcompressorinst {
     uint8_t used_symbols;
     char **symbols;
+    uint8_t **symbol_references;
 
     pzbint_t *tree;
 } pz_comp_inst_t;

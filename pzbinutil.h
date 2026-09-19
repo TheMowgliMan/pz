@@ -19,5 +19,7 @@ typedef struct drefarr {
 ref_list_t *pzbinutil_FromBinary(uint8_t *bin, uint64_t bin_len);
 
 void pzbinutil_DRefList_DelLeft(d_ref_list_t *ptr);
+void pzbinutil_DRefList_Append(d_ref_list_t *ptr, uint8_t *d);
+d_ref_list_t *pzbinutil_DRefList_ReelFromRight(d_ref_list_t *ptr, uint32_t reel);
 
 #endif

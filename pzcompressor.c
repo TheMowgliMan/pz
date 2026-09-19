@@ -27,9 +27,36 @@ void __insert_into(uint8_t *ptr, uint8_t ins, size_t *ptrsz, size_t *ptrsz_in_us
     }
 }
 
+bool match_sym(pz_comp_inst_t *inst, char *sym_name, uint8_t *sym_key) {
+    uint8_t *key = NULL;
+    for (uint16_t i = 0; i < MAXIMUM_SYMBOL_COUNT; i++) {
+        if ((size_t)(inst->symbols[i]) == 0) // Evil pointer casting lol
+            continue;
+
+        if (strcmp(inst->symbols[i], sym_name) == 0) {
+            key = inst->symbol_references[i];
+        }
+    }
+
+    if (!key) {
+        return false;
+    } else {
+        int test = strcmp((char *)sym_key, (char *)key);
+
+        switch (test) {
+            case 0:
+                return true;
+                break;
+            default:
+                return false;
+        }
+    }
+}
+
 void pzcompressor_ImportTreeFile(pz_comp_inst_t *inst, char *tree_string, uint32_t tree_size) {
     inst->tree = pztertree_New();
-    inst->symbols = (char**)pzmalloc(sizeof(char *) * 16);
+    inst->symbols = (char**)pzmalloc(sizeof(char *) * MAXIMUM_SYMBOL_COUNT);
+    memset(inst->symbols, 0, sizeof(char *) * MAXIMUM_SYMBOL_COUNT);
     inst->used_symbols = 0;
 
     char *string = (char *)pzmalloc(sizeof(char) * (tree_size + 1));
@@ -54,6 +81,10 @@ void pzcompressor_ImportTreeFile(pz_comp_inst_t *inst, char *tree_string, uint32
         if (f == '[') {
             inst->symbols[inst->used_symbols] = (char *)pzmalloc(sizeof(char) * (strlen(ln) + 1));
             memcpy(inst->symbols[inst->used_symbols], ln, sizeof(char) * (1 + strlen(ln)));
+
+            uint8_t *sym_key = pztertree_InOrderFind(inst->tree, ln, strlen(ln) + 1);
+            inst->symbol_references[inst->used_symbols] = sym_key;
+
             inst->used_symbols++;
         }
     }
@@ -98,6 +129,7 @@ uint8_t *pzcompressor_DecompressFile(pz_comp_inst_t *inst, uint8_t *fdata, size_
 
     uint8_t bref_stage = 0;
     uint8_t *bref_cc = NULL;
+    uint16_t bref_cc_i = 0;
 
     size_t bref_len = 0;
     size_t bref_count = 0;
@@ -140,13 +172,7 @@ uint8_t *pzcompressor_DecompressFile(pz_comp_inst_t *inst, uint8_t *fdata, size_
                     __insert_into(ret, ((uint8_t *)(c.d))[0], &retsz, &retsz_in_use); // This modifies the variables in-place for me
                     pzbinutil_DRefList_DelLeft(bref_q_head);
 
-                    d_ref_list_t *new = (d_ref_list_t *)pzmalloc(sizeof(d_ref_list_t));
-                    new->d = (uint8_t *)(c.d);
-                    new->n = NULL;
-                    new->p = bref_q_tail;
-
-                    bref_q_tail->n = new;
-                    bref_q_tail = new;
+                    pzbinutil_DRefList_Append(bref_q_tail, (uint8_t *)(c.d));
 
                     bref_char_passed++;
                 }
@@ -155,7 +181,72 @@ uint8_t *pzcompressor_DecompressFile(pz_comp_inst_t *inst, uint8_t *fdata, size_
                 reptstage = 0;
                 reptcount = 0;
                 reptcc_i = 0;
+            } else {
+                debug("Error: invalid [REPT] stage: %d", reptstage);
             }
+
+            continue;
+        } else if (bref_stage > 0) {
+            if (bref_stage == 1) {
+                if (bref_cc == NULL) {
+                    bref_cc_i = 0;
+                    bref_cc = (uint8_t *)pzmalloc(sizeof(uint8_t) * 1024);
+                    memset(bref_cc, 0, sizeof(uint8_t) * 1024);
+                }
+
+                uint32_t cc_sz = strlen((char *)(cc->d)) + 1;
+                memcpy(&bref_cc[bref_cc_i], cc->d, cc_sz);
+                bref_cc_i += cc_sz;
+
+                if (bref_cc_i == 9) {
+                    bref_stage++;
+                    bref_count = bref_cc[0] * 16384 + bref_cc[1] * 4096 + bref_cc[2] * 1024 + bref_cc[3] * 256 + bref_cc[4] * 64 + bref_cc[5] * 16 + bref_cc[6] * 4 + bref_cc[7];
+
+                    free(bref_cc);
+                    bref_cc = NULL;
+                }
+            } else if (bref_stage == 2) {
+                if (bref_cc == NULL) {
+                    bref_cc_i = 0;
+                    bref_cc = (uint8_t *)pzmalloc(sizeof(uint8_t) * 512);
+                    memset(bref_cc, 0, sizeof(uint8_t) * 512);
+                }
+
+                uint32_t cc_sz = strlen((char *)(cc->d));
+                memcpy(&bref_cc[bref_cc_i], cc->d, cc_sz);
+                bref_cc_i += cc_sz;
+
+                if (bref_cc_i == 5) {
+                    bref_len = bref_cc[0] * 64 + bref_cc[1] * 16 + bref_cc[2] * 4 + bref_cc[3];
+
+                    free(bref_cc);
+                    bref_cc = NULL;
+
+                    d_ref_list_t *ref = pzbinutil_DRefList_ReelFromRight(bref_q_tail, bref_count);
+
+                    for (size_t j = 0; j < bref_len; j++) {
+                        __insert_into(ret, *(ref->d), &retsz, &retsz_in_use);
+
+                        pzbinutil_DRefList_Append(bref_q_tail, ref->d);
+                        ref = ref->n;
+                        pzbinutil_DRefList_DelLeft(bref_q_head);
+                    }
+
+                    bref_stage = 0;
+                    bref_cc_i = 0;
+
+                    bref_len = 0;
+                    bref_count = 0;
+                }
+            } else {
+                debug("Error: invalid [BACKREF] stage: %d", bref_stage);
+            }
+
+            continue;
+        }
+
+        if (match_sym(inst, "[EOA]", cc->d)) {
+            break;
         }
     }
 }
