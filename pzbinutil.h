@@ -11,11 +11,13 @@ typedef struct refarr {
 
 typedef struct drefarr d_ref_list_t;
 typedef struct drefarr {
-    ref_list_t *n;
-    ref_list_t *p;
+    d_ref_list_t *n;
+    d_ref_list_t *p;
     uint8_t *d;
 } d_ref_list_t;
 
 ref_list_t *pzbinutil_FromBinary(uint8_t *bin, uint64_t bin_len);
+
+void pzbinutil_DRefList_DelLeft(d_ref_list_t *ptr);
 
 #endif

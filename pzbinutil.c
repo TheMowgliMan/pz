@@ -33,3 +33,10 @@ ref_list_t *pzbinutil_FromBinary(uint8_t *bin, uint64_t bin_len) {
 
     return ret;
 }
+
+void pzbinutil_DRefList_DelLeft(d_ref_list_t *ptr) {
+    d_ref_list_t *old = ptr;
+    ptr = old->n;
+    ptr->p = NULL;
+    free(old);
+}
