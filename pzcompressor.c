@@ -53,18 +53,37 @@ bool match_sym(pz_comp_inst_t *inst, char *sym_name, uint8_t *sym_key) {
     }
 }
 
+bool is_sym(pz_comp_inst_t *inst, uint8_t *sym_key) {
+    for (uint16_t i = 0; i < MAXIMUM_SYMBOL_COUNT; i++) {
+        if ((size_t)(inst->symbols[i] == 0))
+            continue;
+
+        if (strcmp((char *)(inst->symbol_references[i]), (char *)sym_key) == 0)
+            return true;
+    }
+
+    return false;
+}
+
 void pzcompressor_ImportTreeFile(pz_comp_inst_t *inst, char *tree_string, uint32_t tree_size) {
     inst->tree = pztertree_New();
+
+    printf("Allocating symbols\n");
     inst->symbols = (char**)pzmalloc(sizeof(char *) * MAXIMUM_SYMBOL_COUNT);
     memset(inst->symbols, 0, sizeof(char *) * MAXIMUM_SYMBOL_COUNT);
     inst->used_symbols = 0;
 
+    printf("Allocating string...\n");
     char *string = (char *)pzmalloc(sizeof(char) * (tree_size + 1));
     memcpy(string, tree_string, tree_size);
     string[tree_size] = '\0';
 
-    for (char *ln = strtok(string, "\n"); ln != NULL; strtok(NULL, "\n")) {
+    printf("Iterating...\n");
+
+    for (char *ln = strtok(string, "\n"); ln != NULL; ln = strtok(NULL, "\n")) {
+        printf("HERE 1\n");
         printf("%s\n", ln);
+        printf("HERE 2\n");
 
         char f = ln[0];
         if (f >= '0' && f <= '9') {
@@ -169,7 +188,7 @@ uint8_t *pzcompressor_DecompressFile(pz_comp_inst_t *inst, uint8_t *fdata, size_
                 }
 
                 for (uint64_t j = 0; j < reptcount; j++) {
-                    __insert_into(ret, ((uint8_t *)(c.d))[0], &retsz, &retsz_in_use); // This modifies the variables in-place for me
+                    __insert_into(ret, *((uint8_t *)(c.d)), &retsz, &retsz_in_use); // This modifies the variables in-place for me
                     pzbinutil_DRefList_DelLeft(bref_q_head);
 
                     pzbinutil_DRefList_Append(bref_q_tail, (uint8_t *)(c.d));
@@ -248,5 +267,67 @@ uint8_t *pzcompressor_DecompressFile(pz_comp_inst_t *inst, uint8_t *fdata, size_
         if (match_sym(inst, "[EOA]", cc->d)) {
             break;
         }
+
+        if (match_sym(inst, "[PZ META]", cc->d)) {
+            is_meta = true;
+        } else if (match_sym(inst, "[END META]", cc->d)) {
+            is_meta = false;
+
+            if (pz_protocol_ver == -1) {
+                debug("Decompressing files with no stated protocol is deprecated and may be removed at any time!");
+                return NULL;
+            }
+        }
+
+        if (match_sym(inst, "[REPT]", cc->d))
+            reptstage = 1;
+        else if (match_sym(inst, "[BACKREF]", cc->d)) {
+            bref_stage = 1;
+            bref_char_passed = 0;
+        }
+
+        if (!is_sym(inst, cc->d) && !is_meta) {
+            pzbint_ret_t c = pztertree_Get(inst->tree, cc->d);
+            __insert_into(ret, *((uint8_t *)(c.d)), &retsz, &retsz_in_use);
+
+            pzbinutil_DRefList_Append(bref_q_tail, ((uint8_t *)(c.d)));
+            pzbinutil_DRefList_DelLeft(bref_q_head);
+
+            bref_char_passed++;
+        }
+
+        if (is_meta) {
+            if (match_sym(inst, "[PZ PROTOCOL 0]", cc->d)) {
+                pz_protocol_ver = 0;
+            }
+        }
     }
+
+    return ret; // FIXME: I guarantee there are a bajillion memory leaks
+}
+
+int main(int argc, char *argv[]) {
+    printf("Started\n");
+
+    FILE *f = fopen("small.txt.pz", "rb");
+    if (f == NULL) {
+        debug("File not found");
+        return -1;
+    }
+
+    fseek(f, 0, SEEK_END);
+
+    size_t fsz = (size_t)ftell(f);
+
+    uint8_t *buf = (uint8_t *)pzmalloc(fsz);
+    fread(buf, fsz, 1, f);
+
+    fclose(f);
+
+    pz_comp_inst_t *comp = (pz_comp_inst_t *)pzmalloc(sizeof(pz_comp_inst_t));
+    uint8_t *decompressed = pzcompressor_DecompressFile(comp, buf, fsz);
+
+    printf("%s\n", (char *)decompressed);
+
+    return 0;
 }

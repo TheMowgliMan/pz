@@ -3,9 +3,10 @@
 #include "macros.h"
 
 #include <string.h>
+#include <stdio.h>
 
 pzbint_t *pztertree_New(void) {
-    debug("Creating ternary tree...");
+    printf("Creating ternary tree...\n");
 
     pzbint_t *r = (pzbint_t *)pzmalloc(sizeof(pzbint_t));
     r->h = NULL;
