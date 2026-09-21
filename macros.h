@@ -6,6 +6,10 @@
 
 #define debug(format, ...) fprintf(stderr, format __VA_OPT__(,) __VA_ARGS__)
 
+#define STRINGIFY(x) #x
+#define STREXPR(x) STRINGIFY(x)
+#define assertif(test) (test && debug("Error: file " __FILE__ ": line " STREXPR(__LINE__)": assertion failed: '" STREXPR(test) "'!\n"))
+
 #define pzmalloc(...) malloc(__VA_ARGS__)
 #define pzfree(...) free(__VA_ARGS__)
 

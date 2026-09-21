@@ -81,12 +81,11 @@ void pzcompressor_ImportTreeFile(pz_comp_inst_t *inst, char *tree_string, uint32
     printf("Iterating...\n");
 
     for (char *ln = strtok(string, "\n"); ln != NULL; ln = strtok(NULL, "\n")) {
-        printf("HERE 1\n");
         printf("%s\n", ln);
-        printf("HERE 2\n");
 
         char f = ln[0];
         if (f >= '0' && f <= '9') {
+            printf("DIGIT\n");
             int d = atoi(ln);
 
             char *dc = (char *)pzmalloc(sizeof(char));
@@ -98,11 +97,17 @@ void pzcompressor_ImportTreeFile(pz_comp_inst_t *inst, char *tree_string, uint32
         }
 
         if (f == '[') {
+            printf("SYMBOL\n");
             inst->symbols[inst->used_symbols] = (char *)pzmalloc(sizeof(char) * (strlen(ln) + 1));
+            printf("2\n");
             memcpy(inst->symbols[inst->used_symbols], ln, sizeof(char) * (1 + strlen(ln)));
+            printf("3\n");
 
             uint8_t *sym_key = pztertree_InOrderFind(inst->tree, ln, strlen(ln) + 1);
+            assertif(sym_key == NULL);
+            printf("4\n");
             inst->symbol_references[inst->used_symbols] = sym_key;
+            printf("5\n");
 
             inst->used_symbols++;
         }
@@ -318,6 +323,7 @@ int main(int argc, char *argv[]) {
     fseek(f, 0, SEEK_END);
 
     size_t fsz = (size_t)ftell(f);
+    rewind(f);
 
     uint8_t *buf = (uint8_t *)pzmalloc(fsz);
     fread(buf, fsz, 1, f);
