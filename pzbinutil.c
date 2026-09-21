@@ -2,6 +2,8 @@
 
 #include "macros.h"
 
+#include <string.h>
+
 ref_list_t *pzbinutil_FromBinary(uint8_t *bin, uint64_t bin_len) {
     ref_list_t *ret = NULL;
 
@@ -21,7 +23,9 @@ ref_list_t *pzbinutil_FromBinary(uint8_t *bin, uint64_t bin_len) {
     uint64_t last_idx = 0;
     for (uint64_t i = 0; i < (bin_len * 4); i++) {
         if (byte_buf[i] == 0) {
-            head->d = &byte_buf[last_idx];
+            uint8_t *temp = &byte_buf[last_idx];
+            head->d = (uint8_t *)pzmalloc(sizeof(uint8_t *) * (strlen((char *)temp) + 1));
+            memcpy(head->d, temp, (strlen((char *)temp) + 1));
             head->n = (ref_list_t *)pzmalloc(sizeof(ref_list_t));
 
             head = head->n;
@@ -34,21 +38,27 @@ ref_list_t *pzbinutil_FromBinary(uint8_t *bin, uint64_t bin_len) {
     return ret;
 }
 
-void pzbinutil_DRefList_DelLeft(d_ref_list_t *ptr) {
-    d_ref_list_t *old = ptr;
-    ptr = old->n;
-    ptr->p = NULL;
+void pzbinutil_DRefList_DelLeft(d_ref_list_t **ptr) {
+    printf("dl: 1\n");
+    d_ref_list_t *old = *ptr;
+    printf("dl: 2\n");
+    *ptr = old->n;
+    printf("dl: 3\n");
+    printf("%p\n", *ptr);
+    (*ptr)->p = NULL;
+    printf("dl: 4\n");
     free(old);
+    printf("dl: 5\n");
 }
 
-void pzbinutil_DRefList_Append(d_ref_list_t *ptr, uint8_t *d) {
+void pzbinutil_DRefList_Append(d_ref_list_t **ptr, uint8_t *d) {
     d_ref_list_t *new = (d_ref_list_t *)pzmalloc(sizeof(d_ref_list_t));
     new->d = d;
     new->n = NULL;
-    new->p = ptr;
+    new->p = *ptr;
 
-    ptr->n = new;
-    ptr = new;
+    (*ptr)->n = new;
+    *ptr = new;
 }
 
 d_ref_list_t *pzbinutil_DRefList_ReelFromRight(d_ref_list_t *ptr, uint32_t reel) {

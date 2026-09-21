@@ -39,7 +39,8 @@ void pztertree_Add(pzbint_t *tree, void *d, uint8_t dlen) {
     item->n_r = NULL;
     item->n_c = NULL;
 
-    item->v = d;
+    item->v = pzmalloc(dlen);
+    memcpy(item->v, d, dlen);
     item->vlen = dlen;
 
     tq_t *head = (tq_t *)pzmalloc(sizeof(tq_t));
@@ -47,13 +48,15 @@ void pztertree_Add(pzbint_t *tree, void *d, uint8_t dlen) {
     head->n = NULL;
 
     tq_t *q = head;
+    tq_t *qt = head;
     for (;;) {
         if (q->i->n_l) {
             tq_t *t = (tq_t *)pzmalloc(sizeof(tq_t));
             t->n = NULL;
 
             t->i = q->i->n_l;
-            q->n = t;
+            qt->n = t;
+            qt = qt->n;
         } else {
             q->i->n_l = item;
             goto defer;
@@ -64,7 +67,8 @@ void pztertree_Add(pzbint_t *tree, void *d, uint8_t dlen) {
             t->n = NULL;
 
             t->i = q->i->n_r;
-            q->n = t;
+            qt->n = t;
+            qt = qt->n;
         } else {
             q->i->n_r = item;
             goto defer;
@@ -75,7 +79,8 @@ void pztertree_Add(pzbint_t *tree, void *d, uint8_t dlen) {
             t->n = NULL;
 
             t->i = q->i->n_c;
-            q->n = t;
+            qt->n = t;
+            qt = qt->n;
         } else {
             q->i->n_c = item;
             goto defer;
@@ -98,33 +103,25 @@ defer: // The evil GOTO, although probably less evil than that "for" statement d
 pzbint_ret_t pztertree_Get(pzbint_t *head, uint8_t *key) {
     pzbinti_t *tree = head->h;
     for (uint8_t i = 0, v = key[i]; key[i] != 0; i++, v = key[i]) { // I love how diabolical C can be
-        if (!v) {
-            pzbint_ret_t ret;
-            ret.d = tree->v;
-            ret.dlen = tree->vlen;
-
-            return ret;
+        if (v == 1) {
+            tree = tree->n_l;
+        } else if (v == 2) {
+            tree = tree->n_r;
         } else {
-            if (v == 1) {
-                tree = tree->n_l;
-            } else if (v == 2) {
-                tree = tree->n_r;
-            } else {
-                tree = tree->n_c;
-            }
+            tree = tree->n_c;
         }
     }
 
     pzbint_ret_t ret;
-    ret.d = NULL;
-    ret.dlen = 0;
+    ret.d = tree->v;
+    ret.dlen = tree->vlen;
 
     return ret;
 }
 
-static bool __set_if_new(uint8_t *ptr, uint8_t *new) {
-    if (new != NULL && ptr == NULL) {
-        ptr = new;
+static bool __set_if_new(uint8_t **ptr, uint8_t *new) {
+    if (new != *ptr) {
+        *ptr = new;
         return true;
     } else {
         return false;
@@ -133,28 +130,12 @@ static bool __set_if_new(uint8_t *ptr, uint8_t *new) {
 
 static uint8_t *__iof(pzbinti_t *item, void *match, size_t matchlen, uint8_t *chain, uint32_t chaini, size_t chainlen) {
     uint8_t *ret = NULL;
-    if (chaini == chainlen) {
-        for (int i = 0; i < chainlen; i++) {
-            printf("%d", chain[i]);
-        }
-        printf("\n");
-        goto end;
-    }
+    if (chaini == chainlen) goto end;
 
-    if (item->vlen == sizeof(uint8_t)) {
-        printf("item: %c\n", *((char *)item->v));
-    } else {
-        printf("item: ");
-        for (int i = 0; i < item->vlen; i++) {
-            printf("%c", ((char *)(item->v))[i]);
-        }
-        printf("\n");
-    }
-
-    if (/*matchlen == item->vlen && */memcmp((uint8_t *)match, (uint8_t *)(item->v), matchlen) == 0) {
+    if (matchlen == item->vlen && memcmp((uint8_t *)match, (uint8_t *)(item->v), matchlen) == 0) {
         chain[chaini] = 0;
 
-        uint8_t *ret = (uint8_t *)pzmalloc(sizeof(uint8_t *) * (chaini + 1));
+        ret = (uint8_t *)pzmalloc(sizeof(uint8_t *) * (chaini + 1));
         memcpy(ret, chain, chaini + 1);
 
         pzfree(chain);
@@ -168,7 +149,7 @@ static uint8_t *__iof(pzbinti_t *item, void *match, size_t matchlen, uint8_t *ch
 
         new_ch[chaini] = 1;
 
-        bool jmp = __set_if_new(ret, __iof(item->n_l, match, matchlen, new_ch, chaini + 1, chainlen));
+        bool jmp = __set_if_new(&ret, __iof(item->n_l, match, matchlen, new_ch, chaini + 1, chainlen));
         if (jmp) goto end;
     }
 
@@ -178,7 +159,7 @@ static uint8_t *__iof(pzbinti_t *item, void *match, size_t matchlen, uint8_t *ch
 
         new_ch[chaini] = 2;
 
-        bool jmp = __set_if_new(ret, __iof(item->n_r, match, matchlen, new_ch, chaini + 1, chainlen));
+        bool jmp = __set_if_new(&ret, __iof(item->n_r, match, matchlen, new_ch, chaini + 1, chainlen));
         if (jmp) goto end;
     }
 
@@ -188,7 +169,7 @@ static uint8_t *__iof(pzbinti_t *item, void *match, size_t matchlen, uint8_t *ch
 
         new_ch[chaini] = 3;
 
-        bool jmp = __set_if_new(ret, __iof(item->n_c, match, matchlen, new_ch, chaini + 1, chainlen));
+        bool jmp = __set_if_new(&ret, __iof(item->n_c, match, matchlen, new_ch, chaini + 1, chainlen));
         if (jmp) goto end;
     }
 
@@ -201,7 +182,8 @@ uint8_t *pztertree_InOrderFind(pzbint_t *head, void *match, size_t matchlen) {
     uint8_t *chain = (uint8_t *)pzmalloc(sizeof(uint8_t) * 256);
     memset(chain, 0, 256);
 
-    printf("finding: %s\n", (char *)match);
+    uint8_t *ret = __iof(tree, match, matchlen, chain, 0, 256);
+    printf("%p\n", ret);
 
-    return __iof(tree, match, matchlen, chain, 0, 256);
+    return ret;
 }

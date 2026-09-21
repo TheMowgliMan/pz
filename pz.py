@@ -552,10 +552,10 @@ class PzBinUtil:
 if __name__ == "__main__":
     print("Creating compressor...")
     c = PzCompressor()
-    with open("en.txt", "rb") as data:
+    with open("small.txt", "rb") as data:
         print("Compressing data...")
         d = c.compress(data.read())
-        with open("en.txt.pz", "wb") as pz:
+        with open("small.txt.pz", "wb") as pz:
             print("Writing back...")
             # f = PzCompressor()
             # d = f.compress(PzBinUtil.to_binary(d))
@@ -564,10 +564,10 @@ if __name__ == "__main__":
 
     print("Loading compressed file...")
     m = PzCompressor()
-    with open("en.txt.pz", "rb") as data:
+    with open("small.txt.pz", "rb") as data:
         print("Decompressing file...")
         f = m.decompress(data.read())
         print("Writing back...")
-        with open("en2.txt", "wb") as pz:
+        with open("small2.txt", "wb") as pz:
             pz.write(f)
     print("Done!")
