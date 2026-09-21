@@ -13,13 +13,14 @@
 void __insert_into(uint8_t **ptr, uint8_t ins, size_t *ptrsz, size_t *ptrsz_in_use) {
     if (*ptrsz_in_use < *ptrsz) {
         (*ptr)[*ptrsz_in_use] = ins;
-        ptrsz_in_use++;
+        (*ptrsz_in_use)++;
     } else {
-        uint8_t *t = (uint8_t *)realloc(ptr, sizeof(uint8_t) * (*ptrsz + DECOMPRESS_OVER_ALLOCATE_SIZE));
-        if (t) {
+        uint8_t *t = (uint8_t *)realloc(*ptr, sizeof(uint8_t) * (*ptrsz + DECOMPRESS_OVER_ALLOCATE_SIZE));
+        if (t != NULL) {
             *ptr = t;
             (*ptr)[*ptrsz_in_use] = ins;
-            ptrsz_in_use++;
+            (*ptrsz_in_use)++;
+            (*ptrsz) += DECOMPRESS_OVER_ALLOCATE_SIZE;
         } else {
             debug("Error: realloc() failed!");
         }
@@ -135,7 +136,7 @@ void pzcompressor_ImportTreeFile(pz_comp_inst_t *inst, char *tree_string, uint32
     pzfree(string);
 }
 
-uint8_t *pzcompressor_DecompressFile(pz_comp_inst_t *inst, uint8_t *fdata, size_t fdatalen) {
+uint8_t *pzcompressor_DecompressFile(pz_comp_inst_t *inst, uint8_t *fdata, size_t fdatalen, size_t *fsz_ret) {
     printf("Arranging tree...\n");
     uint32_t tree_size = 0;
 
@@ -176,6 +177,13 @@ uint8_t *pzcompressor_DecompressFile(pz_comp_inst_t *inst, uint8_t *fdata, size_
     d_ref_list_t *bref_q_tail = bref_q_head;
     size_t bref_q_sz = 0;
 
+    {
+        char m = (char)(*((uint8_t *)(inst->tree->h->v)));
+        for (uint64_t i = 0; i < 65536; i++) { // Ugly...
+            pzbinutil_DRefList_Append(&bref_q_tail, (uint8_t *)(pztertree_InOrderFind(inst->tree, &m, sizeof(char))));
+        }
+    }
+
     printf("Allocating variables (backref)...\n");
     uint8_t bref_stage = 0;
     uint8_t *bref_cc = NULL;
@@ -189,14 +197,12 @@ uint8_t *pzcompressor_DecompressFile(pz_comp_inst_t *inst, uint8_t *fdata, size_
     printf("Entering loop...\n");
     for (ref_list_t *cc = data; cc != NULL; cc = cc->n) {
         while (bref_q_sz > 65536) {
-            printf("Popping left!\n");
             pzbinutil_DRefList_DelLeft(&bref_q_head);
             bref_q_sz--;
         }
 
         if (reptstage > 0) {
             if (reptstage == 1) {
-                printf("Reptstage 1\n");
                 if (reptcc == NULL) {
                     reptcc_i = 0;
                     reptcc = (uint8_t *)pzmalloc(sizeof(uint8_t) * 512);
@@ -215,32 +221,26 @@ uint8_t *pzcompressor_DecompressFile(pz_comp_inst_t *inst, uint8_t *fdata, size_
                     reptcc = NULL;
                 }
             } else if (reptstage == 2) {
-                printf("Reptstage 2\n");
                 pzbint_ret_t c = pztertree_Get(inst->tree, cc->d);
 
-                printf("2\n");
                 if (c.dlen > 1) {
                     debug("Error: Bad character: too long, not a character!");
                 }
 
-                printf("3\n");
-
                 for (uint64_t j = 0; j < reptcount; j++) {
-                    printf("3.1\n");
                     __insert_into(&ret, *((uint8_t *)(c.d)), &retsz, &retsz_in_use); // This modifies the variables in-place for me
-                    printf("3.2\n");
+
                     if (bref_q_sz > 65536)
                         pzbinutil_DRefList_DelLeft(&bref_q_head);
 
-                    printf("3.3\n");
                     pzbinutil_DRefList_Append(&bref_q_tail, (uint8_t *)(c.d));
-                    printf("3.4\n");
 
                     bref_char_passed++;
+
+                    (*fsz_ret)++;
                 }
 
                 /* Don't need to free reptcc here as we do that above */
-                printf("4\n");
                 reptstage = 0;
                 reptcount = 0;
                 reptcc_i = 0;
@@ -251,7 +251,6 @@ uint8_t *pzcompressor_DecompressFile(pz_comp_inst_t *inst, uint8_t *fdata, size_
             continue;
         } else if (bref_stage > 0) {
             if (bref_stage == 1) {
-                printf("Brefstage 1\n");
                 if (bref_cc == NULL) {
                     bref_cc_i = 0;
                     bref_cc = (uint8_t *)pzmalloc(sizeof(uint8_t) * 1024);
@@ -270,12 +269,9 @@ uint8_t *pzcompressor_DecompressFile(pz_comp_inst_t *inst, uint8_t *fdata, size_
                     bref_cc = NULL;
                 }
             } else if (bref_stage == 2) {
-                printf("Brefstage 2\n");
                 if (bref_cc == NULL) {
-                    printf("1.1\n");
                     bref_cc_i = 0;
                     bref_cc = (uint8_t *)pzmalloc(sizeof(uint8_t) * 512);
-                    printf("1.2\n");
                     memset(bref_cc, 0, sizeof(uint8_t) * 512);
                 }
 
@@ -284,35 +280,18 @@ uint8_t *pzcompressor_DecompressFile(pz_comp_inst_t *inst, uint8_t *fdata, size_
                     continue;
                 }
 
-                printf("2\n");
-                printf("%p\n", cc->d);
                 uint32_t cc_sz = strlen((char *)(cc->d)) + 1;
-                printf("2.1\n");
                 memcpy(&bref_cc[bref_cc_i], cc->d, cc_sz);
-                printf("2.2\n");
                 bref_cc_i += cc_sz;
-                printf("%d\n", cc_sz);
-                printf("%d\n", bref_cc_i);
 
-                printf("cc->d: ");
-                for (int i = 0; i < cc_sz; i++) {
-                    printf("%d", cc->d[i]);
-                }
-                printf("\n");
-
-                printf("3\n");
                 if (bref_cc_i == 5) {
-                    printf("4\n");
                     bref_len = bref_cc[0] * 64 + bref_cc[1] * 16 + bref_cc[2] * 4 + bref_cc[3];
 
-                    printf("5\n");
                     free(bref_cc);
                     bref_cc = NULL;
 
-                    printf("6 (%zd)\n", bref_count);
                     d_ref_list_t *ref = pzbinutil_DRefList_ReelFromRight(bref_q_tail, bref_count - 1);
 
-                    printf("7\n");
                     for (size_t j = 0; j < bref_len; j++) {
                         __insert_into(&ret, *(ref->d), &retsz, &retsz_in_use);
 
@@ -321,9 +300,10 @@ uint8_t *pzcompressor_DecompressFile(pz_comp_inst_t *inst, uint8_t *fdata, size_
 
                         if (bref_q_sz > 65536)
                             pzbinutil_DRefList_DelLeft(&bref_q_head);
+
+                        (*fsz_ret)++;
                     }
 
-                    printf("8\n");
                     bref_stage = 0;
                     bref_cc_i = 0;
 
@@ -338,15 +318,12 @@ uint8_t *pzcompressor_DecompressFile(pz_comp_inst_t *inst, uint8_t *fdata, size_
         }
 
         if (match_sym(inst, "[EOA]", cc->d)) {
-            printf("[EOA]\n");
             break;
         }
 
         if (match_sym(inst, "[PZ META]", cc->d)) {
-            printf("Entering metadata...\n");
             is_meta = true;
         } else if (match_sym(inst, "[END META]", cc->d)) {
-            printf("Exiting metadata...\n");
             is_meta = false;
 
             if (pz_protocol_ver == -1) {
@@ -363,28 +340,24 @@ uint8_t *pzcompressor_DecompressFile(pz_comp_inst_t *inst, uint8_t *fdata, size_
         }
 
         if (!is_sym(inst, cc->d) && !is_meta) {
-            printf("Adding char...\n");
             pzbint_ret_t c = pztertree_Get(inst->tree, cc->d);
-            printf("%c %d %p\n", *((char *)cc->d), *((char *)cc->d), c.d);
-            printf("2\n");
             __insert_into(&ret, *((uint8_t *)(c.d)), &retsz, &retsz_in_use);
 
-            printf("3\n");
             pzbinutil_DRefList_Append(&bref_q_tail, ((uint8_t *)(c.d)));
-            printf("4\n");
             pzbinutil_DRefList_DelLeft(&bref_q_head);
-            printf("5\n");
 
             bref_char_passed++;
+            (*fsz_ret)++;
         }
 
         if (is_meta) {
             if (match_sym(inst, "[PZ PROTOCOL 0]", cc->d)) {
-                printf("Setting protocol ver\n");
                 pz_protocol_ver = 0;
             }
         }
     }
+
+    printf("Done!\n");
 
     return ret; // FIXME: I guarantee there are a bajillion memory leaks
 }
@@ -409,9 +382,15 @@ int main(int argc, char *argv[]) {
     fclose(f);
 
     pz_comp_inst_t *comp = (pz_comp_inst_t *)pzmalloc(sizeof(pz_comp_inst_t));
-    uint8_t *decompressed = pzcompressor_DecompressFile(comp, buf, fsz);
+
+    size_t fsz_ret = 0;
+    uint8_t *decompressed = pzcompressor_DecompressFile(comp, buf, fsz, &fsz_ret);
 
     printf("%s\n", (char *)decompressed);
+
+    f = fopen("smallc.txt", "wb");
+    fwrite(decompressed, sizeof(uint8_t) * fsz_ret, 1, f);
+    fclose(f);
 
     return 0;
 }

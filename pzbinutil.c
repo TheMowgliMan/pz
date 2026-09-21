@@ -39,16 +39,10 @@ ref_list_t *pzbinutil_FromBinary(uint8_t *bin, uint64_t bin_len) {
 }
 
 void pzbinutil_DRefList_DelLeft(d_ref_list_t **ptr) {
-    printf("dl: 1\n");
     d_ref_list_t *old = *ptr;
-    printf("dl: 2\n");
     *ptr = old->n;
-    printf("dl: 3\n");
-    printf("%p\n", *ptr);
     (*ptr)->p = NULL;
-    printf("dl: 4\n");
     free(old);
-    printf("dl: 5\n");
 }
 
 void pzbinutil_DRefList_Append(d_ref_list_t **ptr, uint8_t *d) {

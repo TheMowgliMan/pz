@@ -183,7 +183,6 @@ uint8_t *pztertree_InOrderFind(pzbint_t *head, void *match, size_t matchlen) {
     memset(chain, 0, 256);
 
     uint8_t *ret = __iof(tree, match, matchlen, chain, 0, 256);
-    printf("%p\n", ret);
 
     return ret;
 }
