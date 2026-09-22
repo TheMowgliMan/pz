@@ -65,6 +65,89 @@ bool is_sym(pz_comp_inst_t *inst, uint8_t *sym_key) {
     return false;
 }
 
+void pzcompressor_GenerateTree(pz_comp_inst_t *inst, uint8_t *data, size_t data_sz) {
+    if (inst->tree == NULL) {
+        inst->tree = (pzbint_t *)pzmalloc(sizeof(pzbint_t));
+        inst->tree->h = NULL;
+    }
+
+    uint8_t res_count_k[256];
+    uint64_t res_count_v[256];
+
+    {
+        uint8_t count_arr_k[256];
+        for (uint16_t i = 0; i < 256; i++) {
+            count_arr_k[i] = i;
+        }
+
+        uint64_t count_arr_v[256];
+        for (uint64_t i = 0; i < data_sz; i++) {
+            count_arr_v[data[i]]++;
+        }
+
+        for (uint16_t i = 0; i < 256; i++) {
+            uint8_t lk = 0;
+            uint64_t lv = 0;
+            for (uint16_t k = 0; k < 256; k++) {
+                if (count_arr_v[k] > lv) {
+                    lv = count_arr_v[k];
+                    lk = count_arr_k[k];
+                }
+            }
+
+            res_count_v[i] = lv;
+            res_count_k[i] = lk;
+
+            count_arr_v[i] = 0;
+        }
+
+        /* We should now have a nice sorted list of item commonnesses! */
+    }
+
+    bool symbols_not_added = true;
+
+    for (size_t i = 0; i < 256; i++) {
+        if (((double)(res_count_v[i]) < ((double)(res_count_v[0]) / 100.0)) && symbols_not_added) {
+            symbols_not_added = false;
+
+            char c[] = "[REPT]";
+            pztertree_Add(inst->tree, &c, strlen(c) + 1);
+            char c2[] = "[BACKREF]";
+            pztertree_Add(inst->tree, &c2, strlen(c2) + 1);
+            char c3[] = "[PZ META]";
+            pztertree_Add(inst->tree, &c3, strlen(c3) + 1);
+            char c4[] = "[END META]";
+            pztertree_Add(inst->tree, &c4, strlen(c4) + 1);
+            char c5[] = "[PZ PROTOCOL 0]";
+            pztertree_Add(inst->tree, &c5, strlen(c5) + 1);
+        }
+
+        pztertree_Add(inst->tree, &res_count_k[i], sizeof(uint8_t));
+    }
+
+    if (symbols_not_added) {
+        char c[] = "[REPT]";
+        pztertree_Add(inst->tree, &c, strlen(c) + 1);
+        char c2[] = "[BACKREF]";
+        pztertree_Add(inst->tree, &c2, strlen(c2) + 1);
+        char c3[] = "[PZ META]";
+        pztertree_Add(inst->tree, &c3, strlen(c3) + 1);
+        char c4[] = "[END META]";
+        pztertree_Add(inst->tree, &c4, strlen(c4) + 1);
+        char c5[] = "[PZ PROTOCOL 0]";
+        pztertree_Add(inst->tree, &c5, strlen(c5) + 1);
+    }
+
+    char c[] = "[EOA]";
+    pztertree_Add(inst->tree, &c, strlen(c) + 1);
+}
+
+uint8_t pzcompressor_CompressFile(pz_comp_inst_t *inst, uint8_t *data, size_t data_sz) {
+    pzcompressor_GenerateTree(inst, data, data_sz);
+
+    // TODO: More code here!
+}
+
 void pzcompressor_ImportTreeFile(pz_comp_inst_t *inst, char *tree_string, uint32_t tree_size) {
     inst->tree = pztertree_New();
 
@@ -335,6 +418,7 @@ uint8_t *pzcompressor_DecompressFile(pz_comp_inst_t *inst, uint8_t *fdata, size_
         if (match_sym(inst, "[REPT]", cc->d))
             reptstage = 1;
         else if (match_sym(inst, "[BACKREF]", cc->d)) {
+            printf("BACKREF!\n");
             bref_stage = 1;
             bref_char_passed = 0;
         }
@@ -362,6 +446,7 @@ uint8_t *pzcompressor_DecompressFile(pz_comp_inst_t *inst, uint8_t *fdata, size_
     return ret; // FIXME: I guarantee there are a bajillion memory leaks
 }
 
+#ifdef COMPRESSOR_TEST
 int main(int argc, char *argv[]) {
     printf("Started\n");
 
@@ -394,3 +479,4 @@ int main(int argc, char *argv[]) {
 
     return 0;
 }
+#endif
