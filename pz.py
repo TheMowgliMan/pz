@@ -234,8 +234,6 @@ class PzCompressor:
         # print("Compressing data...")
 
         r = []
-        last_char = ""
-        last_char_count = 1
 
         ref_q_len = 512
         ref_q = deque([0 for i in range(ref_q_len)], maxlen=ref_q_len)

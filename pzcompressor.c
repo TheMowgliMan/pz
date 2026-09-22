@@ -27,6 +27,11 @@ void __insert_into(uint8_t **ptr, uint8_t ins, size_t *ptrsz, size_t *ptrsz_in_u
     }
 }
 
+void __insert_multiple_into(uint8_t **ptr, uint8_t *ins, size_t *ptrsz, size_t *ptrsz_in_use) {
+    for (uint32_t i = 0; i < (strlen((char *)ins) + 1); i++)
+        __insert_into(ptr, ins[i], ptrsz, ptrsz_in_use);
+}
+
 bool match_sym(pz_comp_inst_t *inst, char *sym_name, uint8_t *sym_key) {
     uint8_t *key = NULL;
     for (uint16_t i = 0; i < MAXIMUM_SYMBOL_COUNT; i++) {
@@ -63,6 +68,20 @@ bool is_sym(pz_comp_inst_t *inst, uint8_t *sym_key) {
     }
 
     return false;
+}
+
+uint8_t *nab_sym(pz_comp_inst_t *inst, char *name) {
+    uint8_t *key = NULL;
+    for (uint16_t i = 0; i < MAXIMUM_SYMBOL_COUNT; i++) {
+        if ((size_t)(inst->symbols[i]) == 0)
+            continue;
+
+        if (strcmp(inst->symbols[i], name) == 0) {
+            key = inst->symbol_references[i];
+        }
+    }
+
+    return key;
 }
 
 void pzcompressor_GenerateTree(pz_comp_inst_t *inst, uint8_t *data, size_t data_sz) {
@@ -145,7 +164,63 @@ void pzcompressor_GenerateTree(pz_comp_inst_t *inst, uint8_t *data, size_t data_
 uint8_t pzcompressor_CompressFile(pz_comp_inst_t *inst, uint8_t *data, size_t data_sz) {
     pzcompressor_GenerateTree(inst, data, data_sz);
 
-    // TODO: More code here!
+    uint8_t *ret = (uint8_t *)pzmalloc(sizeof(uint8_t) * DECOMPRESS_OVER_ALLOCATE_SIZE);
+    size_t retsz = DECOMPRESS_OVER_ALLOCATE_SIZE;
+    size_t retsz_in_use = 0;
+
+    uint16_t bref_q_maxsz = 512;
+    d_ref_list_t *bref_q_head = (d_ref_list_t *)pzmalloc(sizeof(d_ref_list_t));
+    bref_q_head->n = NULL;
+    bref_q_head->p = NULL;
+    d_ref_list_t *bref_q_tail = bref_q_head;
+    size_t bref_q_sz = 0;
+
+    {
+        char m = (char)(*((uint8_t *)(inst->tree->h->v)));
+        for (uint64_t i = 0; i < 65536; i++) { // Ugly...
+            pzbinutil_DRefList_Append(&bref_q_tail, (uint8_t *)(pztertree_InOrderFind(inst->tree, &m, sizeof(char))));
+        }
+    }
+
+    d_ref_list_t *ex_q_head = (d_ref_list_t *)pzmalloc(sizeof(d_ref_list_t));
+    ex_q_head->n = NULL;
+    ex_q_head->p = NULL;
+    d_ref_list_t *ex_q_tail = ex_q_head;
+    size_t ex_q_sz = 0;
+
+    int min_bref_size = 0;
+    bool approaching_doneness = false;
+
+    for (uint64_t i = 0; i < (data_sz + 256); i++) {
+        if (i < data_sz) {
+            uint8_t *bc = &data[i];
+            pzbinutil_DRefList_Append(&ex_q_tail, bc);
+        } else {
+            approaching_doneness = true;
+        }
+
+        if (ex_q_sz > 256 || approaching_doneness) {
+            if (ex_q_sz > 1 && memcmp(ex_q_head->d, ex_q_head->n->d, sizeof(uint8_t)) == 0) { // [REPT]
+                size_t l = 0;
+
+                for (d_ref_list_t *item = ex_q_head; memcmp(ex_q_head->d, item->d, sizeof(uint8_t)) == 0; item = item->n)
+                    l++;
+
+                if (l * strlen((char *)ex_q_head->d) > 24) {
+                    __insert_multiple_into(&ret, nab_sym(inst, "[REPT]"), &retsz, &retsz_in_use);
+
+                    __insert_multiple_into(&ret, pzbinutil_KaboomChar(*(ex_q_head->d)), &retsz, &retsz_in_use);
+
+                    __insert_multiple_into(&ret, pztertree_InOrderFind(inst->tree, (ex_q_head->d), sizeof(uint8_t)), &retsz, &retsz_in_use);
+
+                    for (range_int(l)) {
+                        pzbinutil_DRefList_Append(&bref_q_tail, ex_q_head->d);
+                        pzbinutil_DRefList_DelLeft(&ex_q_head);
+                    }
+                }
+            }
+        }
+    }
 }
 
 void pzcompressor_ImportTreeFile(pz_comp_inst_t *inst, char *tree_string, uint32_t tree_size) {

@@ -69,3 +69,15 @@ d_ref_list_t *pzbinutil_DRefList_ReelFromRight(d_ref_list_t *ptr, uint32_t reel)
 end:
     return tail;
 }
+
+uint8_t *pzbinutil_KaboomChar(uint8_t cc) {
+    uint8_t *ret = (uint8_t *)pzmalloc(sizeof(uint8_t) * 5);
+    ret[4] = 0;
+
+    ret[0] = (cc & 0b11000000) >> 6;
+    ret[1] = (cc & 0b00110000) >> 4;
+    ret[2] = (cc & 0b00001100) >> 2;
+    ret[3] = cc & 0b00000011;
+
+    return ret;
+}

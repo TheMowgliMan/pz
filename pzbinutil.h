@@ -22,4 +22,6 @@ void pzbinutil_DRefList_DelLeft(d_ref_list_t **ptr);
 void pzbinutil_DRefList_Append(d_ref_list_t **ptr, uint8_t *d);
 d_ref_list_t *pzbinutil_DRefList_ReelFromRight(d_ref_list_t *ptr, uint32_t reel);
 
+uint8_t *pzbinutil_KaboomChar(uint8_t cc);
+
 #endif
