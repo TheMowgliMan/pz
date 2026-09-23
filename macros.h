@@ -1,6 +1,7 @@
 #ifndef MACROS_H_
 #define MACROS_H_
 
+#include "pzbinutil.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -14,7 +15,12 @@
 #define assertif(test) (test && debug("Error: file " __FILE__ ": line " STREXPR(__LINE__)": assertion failed: '" STREXPR(test) "'!\n"))
 
 #define ITERATOR CATTOK(iter_, __LINE__)
-#define range_int(x) uint64_t ITERATOR = 0; ITERATOR < x; ITERATOR++
+
+#define range_u64(id, start, stop, step) uint64_t id = (start); id != (stop); id += (step)
+#define range_u32(id, start, stop, step) uint32_t id = (start); id != (stop); id += (step)
+#define range_u16(id, start, stop, step) uint16_t id = (start); id != (stop); id += (step)
+#define range_u8(id, start, stop, step) uint8_t id = (start); id != (stop); id += (step)
+#define range_d_ref_list(id, x) d_ref_list_t *id = x; id != NULL; id = id->n
 
 #define pzmalloc(...) malloc(__VA_ARGS__)
 #define pzfree(...) free(__VA_ARGS__)

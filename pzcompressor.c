@@ -213,11 +213,36 @@ uint8_t pzcompressor_CompressFile(pz_comp_inst_t *inst, uint8_t *data, size_t da
 
                     __insert_multiple_into(&ret, pztertree_InOrderFind(inst->tree, (ex_q_head->d), sizeof(uint8_t)), &retsz, &retsz_in_use);
 
-                    for (range_int(l)) {
+                    for (range_u64(j, 0, l, 1)) {
                         pzbinutil_DRefList_Append(&bref_q_tail, ex_q_head->d);
                         pzbinutil_DRefList_DelLeft(&ex_q_head);
                     }
+                } else {
+                    __insert_multiple_into(&ret, pztertree_InOrderFind(inst->tree, (ex_q_head->d), sizeof(uint8_t)), &retsz, &retsz_in_use);
+                    pzbinutil_DRefList_Append(&bref_q_tail, ex_q_head->d);
+                    pzbinutil_DRefList_DelLeft(&ex_q_head);
                 }
+            } else if (bref_q_sz != 0) { // [BACKREF]
+                pzbin_block_t found = pztertree_DRefList_FindBetween(bref_q_head, bref_q_sz, ex_q_head, ex_q_sz, 5);
+                if (found.blockidx >= 0 && found.blocklen > 22) {
+                    __insert_multiple_into(&ret, nab_sym(inst, "[BACKREF]"), &retsz, &retsz_in_use);
+
+                    __insert_multiple_into(&ret, pzbinutil_KaboomShort(bref_q_sz - found.blockidx), &retsz, &retsz_in_use);
+                    __insert_multiple_into(&ret, pzbinutil_KaboomChar(found.blocklen), &retsz, &retsz_in_use);
+
+                    for (range_u64(j, 0, found.blocklen, 1)) {
+                        pzbinutil_DRefList_Append(&bref_q_tail, ex_q_head->d);
+                        pzbinutil_DRefList_DelLeft(&ex_q_head);
+                    }
+                } else {
+                    __insert_multiple_into(&ret, pztertree_InOrderFind(inst->tree, (ex_q_head->d), sizeof(uint8_t)), &retsz, &retsz_in_use);
+                    pzbinutil_DRefList_Append(&bref_q_tail, ex_q_head->d);
+                    pzbinutil_DRefList_DelLeft(&ex_q_head);
+                }
+            } else {
+                __insert_multiple_into(&ret, pztertree_InOrderFind(inst->tree, (ex_q_head->d), sizeof(uint8_t)), &retsz, &retsz_in_use);
+                pzbinutil_DRefList_Append(&bref_q_tail, ex_q_head->d);
+                pzbinutil_DRefList_DelLeft(&ex_q_head);
             }
         }
     }

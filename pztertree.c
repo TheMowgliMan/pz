@@ -1,6 +1,7 @@
 #include "pztertree.h"
 
 #include "macros.h"
+#include "pzbinutil.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -185,4 +186,53 @@ uint8_t *pztertree_InOrderFind(pzbint_t *head, void *match, size_t matchlen) {
     uint8_t *ret = __iof(tree, match, matchlen, chain, 0, 256);
 
     return ret;
+}
+
+static int64_t __find_index(uint8_t *sub, size_t subsz, uint8_t *main, size_t mainsz) {
+    for (range_u64(i, 0, mainsz - subsz + 1, 1)) {
+        if (memcmp(&main[i], &sub[i], subsz) == 0) {
+            return (int64_t)i;
+        }
+    }
+
+    return -1;
+}
+
+pzbin_block_t pztertree_DRefList_FindBetween(d_ref_list_t *search_from, size_t fromsz, d_ref_list_t *search_src, size_t srcsz, uint16_t min_size) {
+    uint8_t *from = (uint8_t *)pzmalloc(sizeof(uint8_t) * fromsz);
+    uint8_t *src = (uint8_t *)pzmalloc(sizeof(uint8_t) * srcsz);
+
+    uint64_t i = 0;
+    for (range_d_ref_list(idx, search_from)) {
+        from[i] = *(idx->d);
+        i++;
+    }
+
+    i = 0;
+    for (range_d_ref_list(idx, search_src)) {
+        src[i] = *(idx->d);
+        i++;
+    }
+
+    for (range_u32(b, srcsz - 1, 0, -1)) {
+        if (b < min_size) break;
+
+        size_t blocksz = b;
+        int64_t idx = __find_index(src, blocksz, from, fromsz);
+
+        if (idx >= 0) {
+            pzbin_block_t a = {
+                .blockidx = idx,
+                .blocklen = blocksz
+            };
+
+            return a;
+        }
+    }
+
+    pzbin_block_t a = {
+        .blockidx = -1,
+        .blocklen = 0
+    };
+    return a;
 }
