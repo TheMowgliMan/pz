@@ -22,6 +22,8 @@ void pztertree_Add(pzbint_t *tree, void *d, uint8_t dlen) {
     memcpy(temp, d, dlen);
     d = temp;
 
+    tree->sz++;
+
     if (tree->h == NULL) {
         tree->h = (pzbinti_t *)pzmalloc(sizeof(pzbinti_t));
 

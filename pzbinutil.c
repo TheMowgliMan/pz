@@ -92,3 +92,14 @@ uint8_t *pzbinutil_KaboomShort(uint16_t cc) {
 
     return ret;
 }
+
+uint8_t *pzbinutil_KaboomDWord(uint32_t cc) {
+    uint8_t *ret = (uint8_t *)pzmalloc(sizeof(uint8_t) * 17);
+    ret[16] = 0;
+
+    for (range_u8(i, 0, 16, 1)) {
+        ret[i] = (cc & (0x03 << ((15 - i) * 2))) >> ((15 - i) * 2);
+    }
+
+    return ret;
+}

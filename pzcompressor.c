@@ -32,6 +32,11 @@ void __insert_multiple_into(uint8_t **ptr, uint8_t *ins, size_t *ptrsz, size_t *
         __insert_into(ptr, ins[i], ptrsz, ptrsz_in_use);
 }
 
+void __insert_multiple_into_sized(uint8_t **ptr, uint8_t *ins, size_t ins_sz, size_t *ptrsz, size_t *ptrsz_in_use) {
+    for (range_u64(i, 0, ins_sz, 1))
+        __insert_into(ptr, ins[i], ptrsz, ptrsz_in_use);
+}
+
 bool match_sym(pz_comp_inst_t *inst, char *sym_name, uint8_t *sym_key) {
     uint8_t *key = NULL;
     for (uint16_t i = 0; i < MAXIMUM_SYMBOL_COUNT; i++) {
@@ -161,9 +166,73 @@ void pzcompressor_GenerateTree(pz_comp_inst_t *inst, uint8_t *data, size_t data_
     pztertree_Add(inst->tree, &c, strlen(c) + 1);
 }
 
-uint8_t pzcompressor_CompressFile(pz_comp_inst_t *inst, uint8_t *data, size_t data_sz) {
+uint8_t *pzcompressor_GenerateTreeForInsertion(pz_comp_inst_t *inst, size_t *sizeret) {
+    uint8_t *ret_pre = (uint8_t *)pzmalloc(sizeof(uint8_t) * DECOMPRESS_OVER_ALLOCATE_SIZE);
+    size_t ret_presz = DECOMPRESS_OVER_ALLOCATE_SIZE;
+    size_t ret_presz_in_use = 0;
+
+    size_t tree_len = inst->tree->sz;
+    pzbinti_t *tree = inst->tree->h;
+
+    tq_t *head = (tq_t *)pzmalloc(sizeof(tq_t));
+    head->i = inst->tree->h;
+    head->n = NULL;
+
+    tq_t *q = head;
+    tq_t *qt = head;
+
+    for (range_u64(i, 0, tree_len, 1)) {
+        __insert_multiple_into_sized(&ret_pre, (uint8_t *)(tree->v), tree->vlen, &ret_presz, &ret_presz_in_use);
+        __insert_into(&ret_pre, (uint8_t)('\n'), &ret_presz, &ret_presz_in_use);
+
+        if (tree->n_l) {
+            tq_t *t = (tq_t *)pzmalloc(sizeof(tq_t));
+            t->n = NULL;
+
+            t->i = tree->n_l;
+            qt->n = t;
+            qt = qt->n;
+        }
+
+        if (tree->n_r) {
+            tq_t *t = (tq_t *)pzmalloc(sizeof(tq_t));
+            t->n = NULL;
+
+            t->i = tree->n_r;
+            qt->n = t;
+            qt = qt->n;
+        }
+
+        if (tree->n_c) {
+            tq_t *t = (tq_t *)pzmalloc(sizeof(tq_t));
+            t->n = NULL;
+
+            t->i = tree->n_c;
+            qt->n = t;
+            qt = qt->n;
+        }
+
+        tree = q->i;
+        q = q->n;
+    }
+
+    uint8_t *ret = (uint8_t *)pzmalloc(sizeof(uint8_t) * DECOMPRESS_OVER_ALLOCATE_SIZE);
+    size_t retsz = DECOMPRESS_OVER_ALLOCATE_SIZE;
+    size_t retsz_in_use = 0;
+
+    for (range_u64(i, 0, ret_presz_in_use, 1))
+        __insert_multiple_into_sized(&ret, pzbinutil_KaboomChar(ret_pre[i]), 5 * sizeof(uint8_t), &retsz, &retsz_in_use);
+
+    *sizeret = ret_presz_in_use;
+
+    return ret;
+}
+
+uint8_t *pzcompressor_CompressFile(pz_comp_inst_t *inst, uint8_t *data, size_t data_sz, size_t *fsz_ret) {
+    printf("Generating tree\n");
     pzcompressor_GenerateTree(inst, data, data_sz);
 
+    printf("Allocating variables\n");
     uint8_t *ret = (uint8_t *)pzmalloc(sizeof(uint8_t) * DECOMPRESS_OVER_ALLOCATE_SIZE);
     size_t retsz = DECOMPRESS_OVER_ALLOCATE_SIZE;
     size_t retsz_in_use = 0;
@@ -190,6 +259,8 @@ uint8_t pzcompressor_CompressFile(pz_comp_inst_t *inst, uint8_t *data, size_t da
 
     int min_bref_size = 0;
     bool approaching_doneness = false;
+
+    printf("Looping\n");
 
     for (uint64_t i = 0; i < (data_sz + 256); i++) {
         if (i < data_sz) {
@@ -246,6 +317,28 @@ uint8_t pzcompressor_CompressFile(pz_comp_inst_t *inst, uint8_t *data, size_t da
             }
         }
     }
+
+    printf("Returning\n");
+
+    uint8_t *meta = (uint8_t *)pzmalloc(sizeof(uint8_t) * DECOMPRESS_OVER_ALLOCATE_SIZE);
+    size_t metasz = DECOMPRESS_OVER_ALLOCATE_SIZE;
+    size_t metasz_in_use = 0;
+
+    size_t sz;
+    uint8_t *tree = pzcompressor_GenerateTreeForInsertion(inst, &sz);
+
+    __insert_multiple_into(&meta, pzbinutil_KaboomDWord((uint32_t)sz), &metasz, &metasz_in_use);
+    __insert_multiple_into_sized(&meta, tree, sz, &metasz, &metasz_in_use);
+
+    __insert_multiple_into(&meta, nab_sym(inst, "[PZ META]"), &metasz, &metasz_in_use);
+    __insert_multiple_into(&meta, nab_sym(inst, "[PZ PROTOCOL 0]"), &metasz, &metasz_in_use);
+    __insert_multiple_into(&meta, nab_sym(inst, "[END META]"), &metasz, &metasz_in_use);
+
+    __insert_multiple_into_sized(&meta, ret, retsz_in_use, &metasz, &metasz_in_use);
+
+    __insert_multiple_into(&meta, nab_sym(inst, "[EOA]"), &metasz, &metasz_in_use);
+
+    return meta;
 }
 
 void pzcompressor_ImportTreeFile(pz_comp_inst_t *inst, char *tree_string, uint32_t tree_size) {
@@ -550,7 +643,7 @@ uint8_t *pzcompressor_DecompressFile(pz_comp_inst_t *inst, uint8_t *fdata, size_
 int main(int argc, char *argv[]) {
     printf("Started\n");
 
-    FILE *f = fopen("small.txt.pz", "rb");
+    FILE *f = fopen("small.txt", "rb");
     if (f == NULL) {
         debug("File not found");
         return -1;
@@ -569,12 +662,12 @@ int main(int argc, char *argv[]) {
     pz_comp_inst_t *comp = (pz_comp_inst_t *)pzmalloc(sizeof(pz_comp_inst_t));
 
     size_t fsz_ret = 0;
-    uint8_t *decompressed = pzcompressor_DecompressFile(comp, buf, fsz, &fsz_ret);
+    uint8_t *compressed = pzcompressor_CompressFile(comp, buf, fsz, &fsz_ret);
 
-    printf("%s\n", (char *)decompressed);
+    printf("%s\n", (char *)compressed);
 
-    f = fopen("smallc.txt", "wb");
-    fwrite(decompressed, sizeof(uint8_t) * fsz_ret, 1, f);
+    f = fopen("small.txt.pz", "wb");
+    fwrite(compressed, sizeof(uint8_t) * fsz_ret, 1, f);
     fclose(f);
 
     return 0;

@@ -24,5 +24,6 @@ d_ref_list_t *pzbinutil_DRefList_ReelFromRight(d_ref_list_t *ptr, uint32_t reel)
 
 uint8_t *pzbinutil_KaboomChar(uint8_t cc);
 uint8_t *pzbinutil_KaboomShort(uint16_t cc);
+uint8_t *pzbinutil_KaboomDWord(uint32_t cc);
 
 #endif

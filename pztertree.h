@@ -18,6 +18,7 @@ typedef struct pzbinti {
 typedef struct pzbint pzbint_t;
 typedef struct pzbint {
     pzbinti_t *h;
+    size_t sz;
 } pzbint_t;
 
 typedef struct terqueue tq_t;
