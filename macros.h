@@ -12,7 +12,7 @@
 
 #define CATTOK(x, y) x ## y
 
-#define assertif(test) (test && debug("Error: file " __FILE__ ": line " STREXPR(__LINE__)": assertion failed: '" STREXPR(test) "'!\n"))
+#define assertif(test) (test && debug("Error, assert: file " __FILE__ ": line " STREXPR(__LINE__)": assertion failed: '" STREXPR(test) "'!\n"))
 
 #define ITERATOR CATTOK(iter_, __LINE__)
 

@@ -1,8 +1,10 @@
 #include "pzbinutil.h"
 
 #include "macros.h"
+#include "insertinto.h"
 
 #include <string.h>
+#include <stdlib.h>
 
 ref_list_t *pzbinutil_FromBinary(uint8_t *bin, uint64_t bin_len) {
     ref_list_t *ret = NULL;
@@ -38,14 +40,63 @@ ref_list_t *pzbinutil_FromBinary(uint8_t *bin, uint64_t bin_len) {
     return ret;
 }
 
+uint8_t *pzbinutil_IntArr_ToBinary(uint8_t *data, size_t data_sz, size_t *datasz_ret) {
+    uint8_t byte_buf[4] = {0, 0, 0, 0};
+
+    *datasz_ret = 0;
+
+    uint8_t *ret = (uint8_t *)pzmalloc(sizeof(uint8_t) * DECOMPRESS_OVER_ALLOCATE_SIZE);
+    size_t retsz = DECOMPRESS_OVER_ALLOCATE_SIZE;
+    size_t retsz_in_use = 0;
+
+    uint8_t last_id = 0;
+    for (range_u64(jj, 0, data_sz, 1)) {
+        byte_buf[jj] = data[jj];
+
+        if ((jj % 4) == 3) {
+            uint8_t a = byte_buf[3];
+            a |= byte_buf[2] << 2;
+            a |= byte_buf[1] << 4;
+            a |= byte_buf[0] << 6;
+
+            __insert_into(&ret, a, &retsz, &retsz_in_use);
+            (*datasz_ret)++;
+        }
+
+        last_id = (jj % 4);
+    }
+
+    if (last_id != 3) {
+        while (last_id != 3) {
+            byte_buf[last_id] = 0;
+            last_id++;
+        }
+
+        uint8_t a = byte_buf[3];
+        a |= byte_buf[2] << 2;
+        a |= byte_buf[1] << 4;
+        a |= byte_buf[0] << 6;
+
+        __insert_into(&ret, a, &retsz, &retsz_in_use);
+        (*datasz_ret)++;
+    }
+
+    return ret;
+}
+
 void pzbinutil_DRefList_DelLeft(d_ref_list_t **ptr) {
     d_ref_list_t *old = *ptr;
     *ptr = old->n;
-    (*ptr)->p = NULL;
+    if (!((*ptr) == NULL)) (*ptr)->p = NULL;
     free(old);
 }
 
 void pzbinutil_DRefList_Append(d_ref_list_t **ptr, uint8_t *d) {
+    if (!((*ptr)->d)) {
+        (*ptr)->d = d;
+        return;
+    }
+
     d_ref_list_t *new = (d_ref_list_t *)pzmalloc(sizeof(d_ref_list_t));
     new->d = d;
     new->n = NULL;

@@ -2,6 +2,7 @@
 #define PZBINUTIL_H_
 
 #include <stdint.h>
+#include <stdlib.h>
 
 typedef struct refarr ref_list_t;
 typedef struct refarr {
@@ -17,6 +18,7 @@ typedef struct drefarr {
 } d_ref_list_t;
 
 ref_list_t *pzbinutil_FromBinary(uint8_t *bin, uint64_t bin_len);
+uint8_t *pzbinutil_IntArr_ToBinary(uint8_t *data, size_t data_sz, size_t *datasz_ret);
 
 void pzbinutil_DRefList_DelLeft(d_ref_list_t **ptr);
 void pzbinutil_DRefList_Append(d_ref_list_t **ptr, uint8_t *d);

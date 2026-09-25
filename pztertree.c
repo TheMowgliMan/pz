@@ -135,7 +135,10 @@ static uint8_t *__iof(pzbinti_t *item, void *match, size_t matchlen, uint8_t *ch
     uint8_t *ret = NULL;
     if (chaini == chainlen) goto end;
 
-    if (matchlen == item->vlen && memcmp((uint8_t *)match, (uint8_t *)(item->v), matchlen) == 0) {
+    // printf("bb %s\n", (char *)(item->v));
+
+    if (/*matchlen == item->vlen &&*/ memcmp((uint8_t *)match, (uint8_t *)(item->v), matchlen) == 0) {
+        // printf("Boop\n");
         chain[chaini] = 0;
 
         ret = (uint8_t *)pzmalloc(sizeof(uint8_t *) * (chaini + 1));
@@ -177,10 +180,12 @@ static uint8_t *__iof(pzbinti_t *item, void *match, size_t matchlen, uint8_t *ch
     }
 
 end:
+    // printf("ff %p\n", ret);
     return ret;
 }
 
 uint8_t *pztertree_InOrderFind(pzbint_t *head, void *match, size_t matchlen) {
+    printf("Head: %p Match: %p Matchlen: %zd\n", head, match, matchlen);
     pzbinti_t *tree = head->h;
     uint8_t *chain = (uint8_t *)pzmalloc(sizeof(uint8_t) * 256);
     memset(chain, 0, 256);

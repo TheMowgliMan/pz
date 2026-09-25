@@ -548,17 +548,17 @@ class PzBinUtil:
         return r
 
 if __name__ == "__main__":
-    print("Creating compressor...")
-    c = PzCompressor()
-    with open("small.txt", "rb") as data:
-        print("Compressing data...")
-        d = c.compress(data.read())
-        with open("small.txt.pz", "wb") as pz:
-            print("Writing back...")
-            # f = PzCompressor()
-            # d = f.compress(PzBinUtil.to_binary(d))
-            # f.export_tree("test_tree_2.pztree")
-            pz.write(d)
+    # print("Creating compressor...")
+    # c = PzCompressor()
+    # with open("small.txt", "rb") as data:
+    #     print("Compressing data...")
+    #     d = c.compress(data.read())
+    #     with open("small.txt.pz", "wb") as pz:
+    #         print("Writing back...")
+    #         # f = PzCompressor()
+    #         # d = f.compress(PzBinUtil.to_binary(d))
+    #         # f.export_tree("test_tree_2.pztree")
+    #         pz.write(d)
 
     print("Loading compressed file...")
     m = PzCompressor()

@@ -3,39 +3,13 @@
 #include "pzbinutil.h"
 #include "pztertree.h"
 #include "macros.h"
+#include "insertinto.h"
 
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-void __insert_into(uint8_t **ptr, uint8_t ins, size_t *ptrsz, size_t *ptrsz_in_use) {
-    if (*ptrsz_in_use < *ptrsz) {
-        (*ptr)[*ptrsz_in_use] = ins;
-        (*ptrsz_in_use)++;
-    } else {
-        uint8_t *t = (uint8_t *)realloc(*ptr, sizeof(uint8_t) * (*ptrsz + DECOMPRESS_OVER_ALLOCATE_SIZE));
-        if (t != NULL) {
-            *ptr = t;
-            (*ptr)[*ptrsz_in_use] = ins;
-            (*ptrsz_in_use)++;
-            (*ptrsz) += DECOMPRESS_OVER_ALLOCATE_SIZE;
-        } else {
-            debug("Error: realloc() failed!");
-        }
-    }
-}
-
-void __insert_multiple_into(uint8_t **ptr, uint8_t *ins, size_t *ptrsz, size_t *ptrsz_in_use) {
-    for (uint32_t i = 0; i < (strlen((char *)ins) + 1); i++)
-        __insert_into(ptr, ins[i], ptrsz, ptrsz_in_use);
-}
-
-void __insert_multiple_into_sized(uint8_t **ptr, uint8_t *ins, size_t ins_sz, size_t *ptrsz, size_t *ptrsz_in_use) {
-    for (range_u64(i, 0, ins_sz, 1))
-        __insert_into(ptr, ins[i], ptrsz, ptrsz_in_use);
-}
 
 bool match_sym(pz_comp_inst_t *inst, char *sym_name, uint8_t *sym_key) {
     uint8_t *key = NULL;
@@ -81,6 +55,8 @@ uint8_t *nab_sym(pz_comp_inst_t *inst, char *name) {
         if ((size_t)(inst->symbols[i]) == 0)
             continue;
 
+        printf("%s\n", inst->symbols[i]);
+
         if (strcmp(inst->symbols[i], name) == 0) {
             key = inst->symbol_references[i];
         }
@@ -89,11 +65,35 @@ uint8_t *nab_sym(pz_comp_inst_t *inst, char *name) {
     return key;
 }
 
+void __add_sym(pz_comp_inst_t *inst, char *sym) {
+    char *c = (char *)pzmalloc(sizeof(char *) * (strlen(sym) + 1));
+    memcpy(c, sym, strlen(sym) + 1);
+    pztertree_Add(inst->tree, c, strlen(c) + 1);
+
+    inst->symbols[inst->used_symbols] = (char *)pzmalloc(sizeof(char) * (strlen(sym) + 1));
+    memcpy(inst->symbols[inst->used_symbols], sym, sizeof(char) * (1 + strlen(sym)));
+
+    uint8_t *sym_key = pztertree_InOrderFind(inst->tree, sym, strlen(sym) + 1);
+    for (range_u64(j, 0, strlen((char *)sym_key) + 1, 1))
+        printf("%d", sym_key[j]);
+    assertif(sym_key == NULL);
+    inst->symbol_references[inst->used_symbols] = sym_key;
+    inst->used_symbols++;
+
+    pzfree(c);
+}
+
 void pzcompressor_GenerateTree(pz_comp_inst_t *inst, uint8_t *data, size_t data_sz) {
-    if (inst->tree == NULL) {
-        inst->tree = (pzbint_t *)pzmalloc(sizeof(pzbint_t));
-        inst->tree->h = NULL;
-    }
+    inst->symbols = (char**)pzmalloc(sizeof(char *) * MAXIMUM_SYMBOL_COUNT);
+    memset(inst->symbols, 0, sizeof(char *) * MAXIMUM_SYMBOL_COUNT);
+
+    inst->symbol_references = (uint8_t**)pzmalloc(sizeof(uint8_t *) * MAXIMUM_SYMBOL_COUNT);
+    memset(inst->symbol_references, 0, sizeof(uint8_t *) * MAXIMUM_SYMBOL_COUNT);
+
+    inst->used_symbols = 0;
+
+    printf("%p %p %zd\n", inst, data, data_sz);
+    inst->tree = pztertree_New();
 
     uint8_t res_count_k[256];
     uint64_t res_count_v[256];
@@ -112,17 +112,19 @@ void pzcompressor_GenerateTree(pz_comp_inst_t *inst, uint8_t *data, size_t data_
         for (uint16_t i = 0; i < 256; i++) {
             uint8_t lk = 0;
             uint64_t lv = 0;
+            uint8_t kk = 0;
             for (uint16_t k = 0; k < 256; k++) {
                 if (count_arr_v[k] > lv) {
                     lv = count_arr_v[k];
                     lk = count_arr_k[k];
+                    kk = k;
                 }
             }
 
             res_count_v[i] = lv;
             res_count_k[i] = lk;
 
-            count_arr_v[i] = 0;
+            count_arr_v[kk] = 0;
         }
 
         /* We should now have a nice sorted list of item commonnesses! */
@@ -134,39 +136,29 @@ void pzcompressor_GenerateTree(pz_comp_inst_t *inst, uint8_t *data, size_t data_
         if (((double)(res_count_v[i]) < ((double)(res_count_v[0]) / 100.0)) && symbols_not_added) {
             symbols_not_added = false;
 
-            char c[] = "[REPT]";
-            pztertree_Add(inst->tree, &c, strlen(c) + 1);
-            char c2[] = "[BACKREF]";
-            pztertree_Add(inst->tree, &c2, strlen(c2) + 1);
-            char c3[] = "[PZ META]";
-            pztertree_Add(inst->tree, &c3, strlen(c3) + 1);
-            char c4[] = "[END META]";
-            pztertree_Add(inst->tree, &c4, strlen(c4) + 1);
-            char c5[] = "[PZ PROTOCOL 0]";
-            pztertree_Add(inst->tree, &c5, strlen(c5) + 1);
+            __add_sym(inst, "[REPT]");
+            __add_sym(inst, "[BACKREF]");
+            __add_sym(inst, "[PZ META]");
+            __add_sym(inst, "[END META]");
+            __add_sym(inst, "[PZ PROTOCOL 0]");
         }
 
         pztertree_Add(inst->tree, &res_count_k[i], sizeof(uint8_t));
     }
 
     if (symbols_not_added) {
-        char c[] = "[REPT]";
-        pztertree_Add(inst->tree, &c, strlen(c) + 1);
-        char c2[] = "[BACKREF]";
-        pztertree_Add(inst->tree, &c2, strlen(c2) + 1);
-        char c3[] = "[PZ META]";
-        pztertree_Add(inst->tree, &c3, strlen(c3) + 1);
-        char c4[] = "[END META]";
-        pztertree_Add(inst->tree, &c4, strlen(c4) + 1);
-        char c5[] = "[PZ PROTOCOL 0]";
-        pztertree_Add(inst->tree, &c5, strlen(c5) + 1);
+        __add_sym(inst, "[REPT]");
+        __add_sym(inst, "[BACKREF]");
+        __add_sym(inst, "[PZ META]");
+        __add_sym(inst, "[END META]");
+        __add_sym(inst, "[PZ PROTOCOL 0]");
     }
 
-    char c[] = "[EOA]";
-    pztertree_Add(inst->tree, &c, strlen(c) + 1);
+    __add_sym(inst, "[EOA]");
 }
 
 uint8_t *pzcompressor_GenerateTreeForInsertion(pz_comp_inst_t *inst, size_t *sizeret) {
+    printf("%zd\n", inst->tree->sz);
     uint8_t *ret_pre = (uint8_t *)pzmalloc(sizeof(uint8_t) * DECOMPRESS_OVER_ALLOCATE_SIZE);
     size_t ret_presz = DECOMPRESS_OVER_ALLOCATE_SIZE;
     size_t ret_presz_in_use = 0;
@@ -184,6 +176,8 @@ uint8_t *pzcompressor_GenerateTreeForInsertion(pz_comp_inst_t *inst, size_t *siz
     for (range_u64(i, 0, tree_len, 1)) {
         __insert_multiple_into_sized(&ret_pre, (uint8_t *)(tree->v), tree->vlen, &ret_presz, &ret_presz_in_use);
         __insert_into(&ret_pre, (uint8_t)('\n'), &ret_presz, &ret_presz_in_use);
+
+        printf("%zd\n", tree_len);
 
         if (tree->n_l) {
             tq_t *t = (tq_t *)pzmalloc(sizeof(tq_t));
@@ -212,8 +206,12 @@ uint8_t *pzcompressor_GenerateTreeForInsertion(pz_comp_inst_t *inst, size_t *siz
             qt = qt->n;
         }
 
-        tree = q->i;
-        q = q->n;
+        if (q != NULL) {
+            tree = q->i;
+            q = q->n;
+        } else {
+            break;
+        }
     }
 
     uint8_t *ret = (uint8_t *)pzmalloc(sizeof(uint8_t) * DECOMPRESS_OVER_ALLOCATE_SIZE);
@@ -260,25 +258,34 @@ uint8_t *pzcompressor_CompressFile(pz_comp_inst_t *inst, uint8_t *data, size_t d
     int min_bref_size = 0;
     bool approaching_doneness = false;
 
-    printf("Looping\n");
+    printf("Looping\nData size: %zd\n", data_sz);
 
     for (uint64_t i = 0; i < (data_sz + 256); i++) {
         if (i < data_sz) {
             uint8_t *bc = &data[i];
             pzbinutil_DRefList_Append(&ex_q_tail, bc);
+            ex_q_sz++;
         } else {
+            printf("Approaching doneness (%ld)\n", i);
             approaching_doneness = true;
         }
 
         if (ex_q_sz > 256 || approaching_doneness) {
+            if (ex_q_head == NULL) break;
+
+            printf("Inside loop\n%p\n", ex_q_head->d);
             if (ex_q_sz > 1 && memcmp(ex_q_head->d, ex_q_head->n->d, sizeof(uint8_t)) == 0) { // [REPT]
+                printf("REPT check\n");
                 size_t l = 0;
 
                 for (d_ref_list_t *item = ex_q_head; memcmp(ex_q_head->d, item->d, sizeof(uint8_t)) == 0; item = item->n)
                     l++;
 
                 if (l * strlen((char *)ex_q_head->d) > 24) {
-                    __insert_multiple_into(&ret, nab_sym(inst, "[REPT]"), &retsz, &retsz_in_use);
+                    printf("Inserting REPT\n");
+                    uint8_t *temp = nab_sym(inst, "[REPT]");
+
+                    __insert_multiple_into(&ret, temp, &retsz, &retsz_in_use);
 
                     __insert_multiple_into(&ret, pzbinutil_KaboomChar(*(ex_q_head->d)), &retsz, &retsz_in_use);
 
@@ -287,15 +294,20 @@ uint8_t *pzcompressor_CompressFile(pz_comp_inst_t *inst, uint8_t *data, size_t d
                     for (range_u64(j, 0, l, 1)) {
                         pzbinutil_DRefList_Append(&bref_q_tail, ex_q_head->d);
                         pzbinutil_DRefList_DelLeft(&ex_q_head);
+                        ex_q_sz--;
                     }
                 } else {
+                    printf("Inserting char 1\n");
                     __insert_multiple_into(&ret, pztertree_InOrderFind(inst->tree, (ex_q_head->d), sizeof(uint8_t)), &retsz, &retsz_in_use);
                     pzbinutil_DRefList_Append(&bref_q_tail, ex_q_head->d);
                     pzbinutil_DRefList_DelLeft(&ex_q_head);
+                    ex_q_sz--;
                 }
             } else if (bref_q_sz != 0) { // [BACKREF]
+                printf("BACKREF check\n");
                 pzbin_block_t found = pztertree_DRefList_FindBetween(bref_q_head, bref_q_sz, ex_q_head, ex_q_sz, 5);
                 if (found.blockidx >= 0 && found.blocklen > 22) {
+                    printf("Inserting BACKREF\n");
                     __insert_multiple_into(&ret, nab_sym(inst, "[BACKREF]"), &retsz, &retsz_in_use);
 
                     __insert_multiple_into(&ret, pzbinutil_KaboomShort(bref_q_sz - found.blockidx), &retsz, &retsz_in_use);
@@ -304,39 +316,61 @@ uint8_t *pzcompressor_CompressFile(pz_comp_inst_t *inst, uint8_t *data, size_t d
                     for (range_u64(j, 0, found.blocklen, 1)) {
                         pzbinutil_DRefList_Append(&bref_q_tail, ex_q_head->d);
                         pzbinutil_DRefList_DelLeft(&ex_q_head);
+                        ex_q_sz--;
                     }
                 } else {
+                    printf("Inserting char 2\n");
                     __insert_multiple_into(&ret, pztertree_InOrderFind(inst->tree, (ex_q_head->d), sizeof(uint8_t)), &retsz, &retsz_in_use);
                     pzbinutil_DRefList_Append(&bref_q_tail, ex_q_head->d);
                     pzbinutil_DRefList_DelLeft(&ex_q_head);
+                    ex_q_sz--;
                 }
             } else {
-                __insert_multiple_into(&ret, pztertree_InOrderFind(inst->tree, (ex_q_head->d), sizeof(uint8_t)), &retsz, &retsz_in_use);
+                printf("Inserting char 3\n");
+                uint8_t *temp = pztertree_InOrderFind(inst->tree, (ex_q_head->d), sizeof(uint8_t));
+                __insert_multiple_into(&ret, temp, &retsz, &retsz_in_use);
                 pzbinutil_DRefList_Append(&bref_q_tail, ex_q_head->d);
                 pzbinutil_DRefList_DelLeft(&ex_q_head);
+                ex_q_sz--;
             }
         }
     }
 
     printf("Returning\n");
 
+    printf("1\n");
     uint8_t *meta = (uint8_t *)pzmalloc(sizeof(uint8_t) * DECOMPRESS_OVER_ALLOCATE_SIZE);
     size_t metasz = DECOMPRESS_OVER_ALLOCATE_SIZE;
     size_t metasz_in_use = 0;
 
+    printf("2\n");
     size_t sz;
     uint8_t *tree = pzcompressor_GenerateTreeForInsertion(inst, &sz);
 
+    printf("3\n");
     __insert_multiple_into(&meta, pzbinutil_KaboomDWord((uint32_t)sz), &metasz, &metasz_in_use);
+    printf("4\n");
     __insert_multiple_into_sized(&meta, tree, sz, &metasz, &metasz_in_use);
 
+    printf("5\n");
     __insert_multiple_into(&meta, nab_sym(inst, "[PZ META]"), &metasz, &metasz_in_use);
+    printf("6\n");
     __insert_multiple_into(&meta, nab_sym(inst, "[PZ PROTOCOL 0]"), &metasz, &metasz_in_use);
+    printf("7\n");
     __insert_multiple_into(&meta, nab_sym(inst, "[END META]"), &metasz, &metasz_in_use);
 
+    printf("8\n");
     __insert_multiple_into_sized(&meta, ret, retsz_in_use, &metasz, &metasz_in_use);
 
+    printf("9\n");
     __insert_multiple_into(&meta, nab_sym(inst, "[EOA]"), &metasz, &metasz_in_use);
+    printf("10\n");
+
+    printf("%zd %zd\n", metasz_in_use, retsz_in_use);
+
+    meta = pzbinutil_IntArr_ToBinary(meta, metasz_in_use, fsz_ret);
+
+    *fsz_ret = metasz_in_use;
 
     return meta;
 }
@@ -664,7 +698,7 @@ int main(int argc, char *argv[]) {
     size_t fsz_ret = 0;
     uint8_t *compressed = pzcompressor_CompressFile(comp, buf, fsz, &fsz_ret);
 
-    printf("%s\n", (char *)compressed);
+    printf("%zd\n", fsz_ret);
 
     f = fopen("small.txt.pz", "wb");
     fwrite(compressed, sizeof(uint8_t) * fsz_ret, 1, f);
