@@ -51,7 +51,7 @@ uint8_t *pzbinutil_IntArr_ToBinary(uint8_t *data, size_t data_sz, size_t *datasz
 
     uint8_t last_id = 0;
     for (range_u64(jj, 0, data_sz, 1)) {
-        byte_buf[jj] = data[jj];
+        byte_buf[jj % 4] = data[jj];
 
         if ((jj % 4) == 3) {
             uint8_t a = byte_buf[3];

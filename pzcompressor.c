@@ -177,7 +177,7 @@ uint8_t *pzcompressor_GenerateTreeForInsertion(pz_comp_inst_t *inst, size_t *siz
         __insert_multiple_into_sized(&ret_pre, (uint8_t *)(tree->v), tree->vlen, &ret_presz, &ret_presz_in_use);
         __insert_into(&ret_pre, (uint8_t)('\n'), &ret_presz, &ret_presz_in_use);
 
-        printf("%zd\n", tree_len);
+        printf("bb %zd\n", tree_len);
 
         if (tree->n_l) {
             tq_t *t = (tq_t *)pzmalloc(sizeof(tq_t));
